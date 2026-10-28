@@ -1,0 +1,6 @@
+{
+  "name": "Aether AI - Assistant Conversationnel Intelligent",
+  "description": "Assistant IA conversationnel complet, modulaire et multi-fournisseur avec streaming en temps réel, gestion de contexte, pièces jointes et historique persistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
