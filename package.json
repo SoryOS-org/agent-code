@@ -8,7 +8,8 @@
     "start": "node server.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "tsx scripts/test-ai-core.ts",
+    "test": "tsx scripts/test-ai-core.ts && tsx scripts/test-web-search.ts",
+    "test:web": "tsx scripts/test-web-search.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

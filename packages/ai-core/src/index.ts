@@ -17,6 +17,8 @@ import {
   ProviderRegistry,
   type ProviderStreamChunk,
 } from '@packages/provider-adapters/src/index.ts';
+import { createWebSearchTools } from '@packages/web-search/src/index.ts';
+import type { WebSearchResponse } from '@packages/web-search/src/types/index.ts';
 
 export interface ToolDefinition {
   name: string;
@@ -179,6 +181,12 @@ export class ToolRegistry {
         };
       },
     });
+
+    // Register OpenCode-inspired Web Search and Web Fetch tools
+    const webTools = createWebSearchTools();
+    for (const tool of webTools) {
+      this.register(tool);
+    }
   }
 }
 
@@ -267,10 +275,52 @@ export class ConversationEngine {
       createdAt: new Date().toISOString(),
     };
 
+    let effectiveSystemPrompt = options.systemPrompt || '';
+
+    // If web search is active, execute websearch tool and ground conversation with structured sources
+    if (options.webSearch) {
+      const searchTool = this.toolRegistry.get('websearch');
+      if (searchTool) {
+        const searchCallId = `tool_search_${Date.now()}`;
+        options.onEvent({
+          event: 'tool_call',
+          data: {
+            toolCall: {
+              id: searchCallId,
+              name: 'websearch',
+              args: { query: options.prompt, numResults: 5 },
+            },
+          },
+        });
+
+        try {
+          const searchData = (await searchTool.execute({
+            query: options.prompt,
+            numResults: 5,
+          })) as WebSearchResponse;
+
+          if (searchData && Array.isArray(searchData.results) && searchData.results.length > 0) {
+            const formattedSources = searchData.results
+              .map(
+                (item, idx) =>
+                  `[Source ${idx + 1}] Titre: "${item.title}"\nURL: ${item.url}\nDomaine: ${item.source}\nExtrait: ${item.snippet}`
+              )
+              .join('\n\n');
+
+            const groundingInstruction = `\n\n--- DONNÉES DE RECHERCHE WEB EN DIRECT (OpenCode Engine: ${searchData.provider === 'exa' ? 'Exa Neural Search' : 'Web Search'}) ---\nRequête: "${options.prompt}"\n\n${formattedSources}\n\nCONSIGNES DE SOURÇAGE :\n1. Répondez précisément à la question en utilisant ces faits récents trouvés sur le Web.\n2. Citez explicitement chaque information avec des liens Markdown cliquables : [Titre de la source](URL).\n3. À la fin de la réponse, incluez systématiquement une section "### 🌐 Sources & Liens" avec les liens directs vers les pages consultées.\n---------------------------------------------------`;
+
+            effectiveSystemPrompt += groundingInstruction;
+          }
+        } catch (searchErr) {
+          console.warn('[ConversationEngine] Web search execution error:', searchErr);
+        }
+      }
+    }
+
     const fullHistory = [...options.history, newUserMessage];
     const preparedMessages = this.contextManager.prepareContext(
       fullHistory,
-      options.systemPrompt
+      effectiveSystemPrompt
     );
 
     // Emit message_start event
@@ -291,7 +341,7 @@ export class ConversationEngine {
       const stream = provider.generateStream({
         modelId: selectedModelId,
         messages: preparedMessages,
-        systemInstruction: options.systemPrompt,
+        systemInstruction: effectiveSystemPrompt,
         temperature: options.temperature,
         webSearch: options.webSearch,
         signal: options.signal,
