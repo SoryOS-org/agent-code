@@ -12,6 +12,22 @@ export interface WebSearchToolArgs {
   type?: 'auto' | 'neural' | 'keyword';
 }
 
+/**
+ * Extracts clean search terms from conversational prompts (e.g. "Fais des recherches sur le web à propos de deepseek harness" -> "deepseek harness")
+ */
+export function extractCleanSearchQuery(prompt: string): string {
+  let cleaned = prompt
+    .toLowerCase()
+    .replace(/(?:fais|fait|faire|effectue|effectues|effectuer|lance|lances|lancer|cherche|chercher|recherche|rechercher)\s+(?:des\s+)?(?:recherches?|infos?|informations?|actualités?|actualite|news)?\s*(?:sur\s+(?:le\s+web|internet|google|l['\s]actualité)?\s*)?(?:à\s+propos\s+de\s+|au\s+sujet\s+de\s+|sur\s+|concernant\s+|de\s+|ce\s+|cette\s+)?/gi, ' ')
+    .replace(/(?:peux-tu|tu\s+peux|s'il\s+te\s+plaît|sil\s+te\s+plaît|svp)\s*/gi, '')
+    .trim();
+
+  if (!cleaned || cleaned.length < 2) {
+    return prompt;
+  }
+  return cleaned;
+}
+
 export function createWebSearchTool(provider: SearchProvider = getDefaultSearchProvider()) {
   return {
     name: 'websearch',
@@ -37,8 +53,8 @@ export function createWebSearchTool(provider: SearchProvider = getDefaultSearchP
       required: ['query'],
     },
     execute: async (args: Record<string, unknown>): Promise<(WebSearchResponse & { content: string }) | { error: string }> => {
-      const query = typeof args.query === 'string' ? args.query.trim() : '';
-      if (!query) {
+      const rawQuery = typeof args.query === 'string' ? args.query.trim() : '';
+      if (!rawQuery) {
         return { error: 'Le paramètre "query" est requis et ne peut pas être vide.' };
       }
 
@@ -47,12 +63,22 @@ export function createWebSearchTool(provider: SearchProvider = getDefaultSearchP
         ? args.type
         : 'auto';
 
+      const cleanQuery = extractCleanSearchQuery(rawQuery);
+
       try {
-        const response = await provider.search({
-          query,
+        let response = await provider.search({
+          query: cleanQuery,
           numResults,
           type,
         });
+
+        if ((!response.results || response.results.length === 0) && cleanQuery !== rawQuery) {
+          response = await provider.search({
+            query: rawQuery,
+            numResults,
+            type,
+          });
+        }
 
         const content = formatOpenCodeSearchResults(response);
 
@@ -61,10 +87,23 @@ export function createWebSearchTool(provider: SearchProvider = getDefaultSearchP
           content,
         };
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        return {
-          error: `Erreur lors de la recherche Web: ${message}`,
-        };
+        try {
+          const response = await provider.search({
+            query: rawQuery,
+            numResults,
+            type,
+          });
+          const content = formatOpenCodeSearchResults(response);
+          return {
+            ...response,
+            content,
+          };
+        } catch (innerErr: unknown) {
+          const message = innerErr instanceof Error ? innerErr.message : String(innerErr);
+          return {
+            error: `Erreur lors de la recherche Web: ${message}`,
+          };
+        }
       }
     },
   };

@@ -277,8 +277,38 @@ export class ConversationEngine {
 
     let effectiveSystemPrompt = options.systemPrompt || '';
 
-    // If web search is active, execute websearch tool and ground conversation with structured sources
-    if (options.webSearch) {
+    // Auto-detect web search intent if not explicitly enabled
+    let effectiveWebSearch = options.webSearch;
+    if (!effectiveWebSearch && options.prompt) {
+      const lowerPrompt = options.prompt.toLowerCase();
+      const searchKeywords = [
+        'recherche',
+        'recherches',
+        'rechercher',
+        'cherche',
+        'chercher',
+        'search',
+        'actu',
+        'actualité',
+        'actualités',
+        'sur internet',
+        'sur le web',
+        'sur google',
+        'news',
+        'dernières nouvelles',
+        'dernier',
+        'récent',
+        'récente',
+        'trouve',
+        'informe-moi',
+      ];
+      if (searchKeywords.some((kw) => lowerPrompt.includes(kw))) {
+        effectiveWebSearch = true;
+      }
+    }
+
+    // If web search is active or auto-detected, execute websearch tool and ground conversation with structured sources
+    if (effectiveWebSearch) {
       const searchTool = this.toolRegistry.get('websearch');
       if (searchTool) {
         const searchCallId = `tool_search_${Date.now()}`;
