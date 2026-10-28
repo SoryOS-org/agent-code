@@ -1,7 +1,7 @@
 /**
  * High-performance, secure Markdown & README & Mermaid Renderer
  * ChatGPT-styled typography, interactive Mermaid diagrams (flowcharts, mindmaps, sequence, ERD),
- * tables, task lists, code blocks with syntax highlighting, and copy.
+ * polished tables, citation badges ([^1^][^3^]), task lists, code blocks with syntax highlighting.
  */
 
 import React, { useState } from 'react';
@@ -200,6 +200,28 @@ const TextBlock: React.FC<{ text: string }> = ({ text }) => {
           return <hr key={idx} className="my-5 border-t border-[#383838]" />;
         }
 
+        // Footnote definition like [^1]: https://...
+        if (/^\[\^[0-9]+\]:\s+/.test(trimmed)) {
+          const fnMatch = trimmed.match(/^\[\^([0-9]+)\]:\s+(.+)$/);
+          if (fnMatch) {
+            return (
+              <div key={idx} className="text-xs text-[#9a9a9a] py-1 flex items-start space-x-2 font-mono">
+                <span className="px-1.5 py-0.5 rounded bg-[#2a2a2a] text-blue-400 border border-[#383838]">
+                  [{fnMatch[1]}]
+                </span>
+                <a
+                  href={fnMatch[2]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-blue-300 underline truncate"
+                >
+                  {fnMatch[2]}
+                </a>
+              </div>
+            );
+          }
+        }
+
         // Markdown Headings
         if (trimmed.startsWith('#### ')) {
           return (
@@ -242,48 +264,53 @@ const TextBlock: React.FC<{ text: string }> = ({ text }) => {
           );
         }
 
-        // Markdown Table (Common in READMEs and technical specs)
-        if (trimmed.includes('|') && trimmed.includes('\n')) {
+        // Markdown Table (Robust parsing for LLM output)
+        if (trimmed.includes('|') && (trimmed.includes('\n') || trimmed.includes('|---'))) {
           const lines = trimmed.split('\n').filter((l) => l.trim().length > 0);
-          if (lines.length >= 2 && lines[0].includes('|') && lines[1].includes('|') && lines[1].includes('-')) {
-            const headerCells = lines[0]
-              .split('|')
-              .slice(1, -1)
-              .map((c) => c.trim());
-            const rowLines = lines.slice(2);
+          if (lines.length >= 2 && lines[0].includes('|')) {
+            const sepIdx = lines.findIndex((l) => l.includes('-') && l.includes('|'));
+            if (sepIdx !== -1 && sepIdx > 0) {
+              const headerStr = lines[sepIdx - 1];
+              const headerCells = headerStr
+                .split('|')
+                .slice(1, -1)
+                .map((c) => c.trim());
+              const rowLines = lines.slice(sepIdx + 1);
 
-            return (
-              <div key={idx} className="my-4 overflow-x-auto rounded-xl border border-[#2f2f2f]">
-                <table className="w-full text-left text-sm text-[#ececec]">
-                  <thead className="bg-[#1f1f1f] text-xs uppercase font-semibold text-[#b4b4b4] border-b border-[#2f2f2f]">
-                    <tr>
-                      {headerCells.map((h, hIdx) => (
-                        <th key={hIdx} className="px-3.5 py-2.5">
-                          {formatInline(h)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#2a2a2a] bg-[#141414]">
-                    {rowLines.map((rowStr, rIdx) => {
-                      const cells = rowStr
-                        .split('|')
-                        .slice(1, -1)
-                        .map((c) => c.trim());
-                      return (
-                        <tr key={rIdx} className="hover:bg-[#1a1a1a] transition-colors">
-                          {cells.map((cell, cIdx) => (
-                            <td key={cIdx} className="px-3.5 py-2">
-                              {formatInline(cell)}
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            );
+              return (
+                <div key={idx} className="my-4 overflow-x-auto rounded-xl border border-[#2f2f2f] shadow-sm">
+                  <table className="w-full text-left text-sm text-[#ececec]">
+                    <thead className="bg-[#1f1f1f] text-xs uppercase font-semibold text-[#b4b4b4] border-b border-[#2f2f2f]">
+                      <tr>
+                        {headerCells.map((h, hIdx) => (
+                          <th key={hIdx} className="px-3.5 py-2.5">
+                            {formatInline(h)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#2a2a2a] bg-[#141414]">
+                      {rowLines.map((rowStr, rIdx) => {
+                        const cells = rowStr
+                          .split('|')
+                          .slice(1, -1)
+                          .map((c) => c.trim());
+                        if (cells.length === 0) return null;
+                        return (
+                          <tr key={rIdx} className="hover:bg-[#1a1a1a] transition-colors">
+                            {cells.map((cell, cIdx) => (
+                              <td key={cIdx} className="px-3.5 py-2">
+                                {formatInline(cell)}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            }
           }
         }
 
@@ -365,8 +392,8 @@ const TextBlock: React.FC<{ text: string }> = ({ text }) => {
 };
 
 function formatInline(str: string): React.ReactNode {
-  // Support inline code, bold, italics, and links [label](url)
-  const tokens = str.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g);
+  // Support inline code, bold, italics, links [label](url), and citations [^1^][^3^], [^1]
+  const tokens = str.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\)|\[\^[0-9^]+\](?:\s*\[\^[0-9^]+\])*)/g);
 
   return tokens.map((token, i) => {
     if (token.startsWith('`') && token.endsWith('`') && token.length > 2) {
@@ -408,6 +435,29 @@ function formatInline(str: string): React.ReactNode {
         </a>
       );
     }
+    // Citations like [^1^] or [^1^][^3^] or [^1]
+    if (/^(\[\^[0-9^]+\])+$/.test(token)) {
+      const matches = token.match(/\[\^([0-9^]+)\]/g);
+      if (matches) {
+        return (
+          <span key={i} className="inline-flex items-center space-x-0.5 mx-0.5 align-baseline">
+            {matches.map((m, mIdx) => {
+              const num = m.replace(/[^0-9]/g, '');
+              return (
+                <span
+                  key={mIdx}
+                  className="inline-flex items-center justify-center px-1.5 py-0.2 rounded text-[11px] font-mono font-medium bg-blue-900/40 text-blue-300 border border-blue-700/40 shadow-xs"
+                  title={`Source [${num}]`}
+                >
+                  {num}
+                </span>
+              );
+            })}
+          </span>
+        );
+      }
+    }
     return token;
   });
 }
+
