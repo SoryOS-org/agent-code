@@ -21,6 +21,8 @@ import { DiagramAssistantModal } from './components/DiagramAssistantModal.tsx';
 import { VoiceModeModal } from './components/VoiceModeModal.tsx';
 import { TaskToolsPanel, TaskItem } from './components/TaskToolsPanel.tsx';
 import { CodeExplorerModal } from './components/CodeExplorerModal.tsx';
+import { PreviewModal } from './components/PreviewModal.tsx';
+import { TerminalModal } from './components/TerminalModal.tsx';
 import { AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
@@ -44,6 +46,11 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [diagramModalOpen, setDiagramModalOpen] = useState(false);
   const [codeExplorerOpen, setCodeExplorerOpen] = useState(false);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [terminalModalOpen, setTerminalModalOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string>(
+    typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
+  );
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [errorToast, setErrorToast] = useState<{ message: string; hint?: string } | null>(null);
 
@@ -451,6 +458,7 @@ export default function App() {
           onExportConversation={handleExportConversation}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenCodeExplorer={() => setCodeExplorerOpen(true)}
+          onOpenPreview={() => setPreviewModalOpen(true)}
         />
 
         {/* Error Toast Banner */}
@@ -547,6 +555,21 @@ export default function App() {
         isOpen={codeExplorerOpen}
         onClose={() => setCodeExplorerOpen(false)}
         onSendToChat={(snippet) => handleSendMessage(snippet, [], false)}
+        onOpenPreview={() => setPreviewModalOpen(true)}
+        onOpenTerminal={() => setTerminalModalOpen(true)}
+      />
+
+      {/* Live Project & URL Preview Modal */}
+      <PreviewModal
+        isOpen={previewModalOpen}
+        onClose={() => setPreviewModalOpen(false)}
+        initialUrl={previewUrl}
+      />
+
+      {/* E2B Terminal Modal */}
+      <TerminalModal
+        isOpen={terminalModalOpen}
+        onClose={() => setTerminalModalOpen(false)}
       />
 
       {/* ChatGPT-styled Voice Mode Modal */}

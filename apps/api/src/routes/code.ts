@@ -56,3 +56,29 @@ codeRouter.post('/code/execute', async (req, res) => {
     res.end();
   }
 });
+
+/**
+ * POST /code/command
+ * Run terminal / shell commands in E2B sandbox or secure local fallback
+ */
+codeRouter.post('/code/command', async (req, res) => {
+  const { command } = req.body || {};
+  if (!command || typeof command !== 'string') {
+    res.status(400).json({ error: 'Commande requise.' });
+    return;
+  }
+
+  try {
+    const { runE2BCommand } = await import('@packages/opencode-e2b/src/e2b-agent-tools.ts');
+    const result = await runE2BCommand(command);
+    res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({
+      stdout: '',
+      stderr: `Erreur d'exécution : ${message}`,
+      exitCode: 1,
+      executionTimeMs: 0,
+    });
+  }
+});

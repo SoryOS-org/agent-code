@@ -30,6 +30,7 @@ import {
   Maximize2,
   Minimize2,
   GripVertical,
+  Globe,
 } from 'lucide-react';
 import { api } from '../api/client.ts';
 
@@ -52,12 +53,16 @@ interface CodeExplorerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSendToChat?: (snippet: string, filename: string) => void;
+  onOpenPreview?: () => void;
+  onOpenTerminal?: () => void;
 }
 
 export const CodeExplorerModal: React.FC<CodeExplorerModalProps> = ({
   isOpen,
   onClose,
   onSendToChat,
+  onOpenPreview,
+  onOpenTerminal,
 }) => {
   const [tree, setTree] = useState<FileNode[]>([]);
   const [loadingTree, setLoadingTree] = useState(false);
@@ -324,12 +329,36 @@ export const CodeExplorerModal: React.FC<CodeExplorerModalProps> = ({
               <span className="hidden sm:inline text-[11px] font-mono">{isSidebarOpen ? 'Masquer' : 'Explorer'}</span>
             </button>
 
-            <span className="text-xs font-semibold text-white tracking-wide truncate max-w-[200px] sm:max-w-none">
-              Explorateur & Code (VS Code)
+            <span className="text-xs font-semibold text-white tracking-wide">
+              Code
             </span>
           </div>
 
           <div className="flex items-center space-x-1 sm:space-x-2">
+            {/* Direct Preview Button */}
+            {onOpenPreview && (
+              <button
+                onClick={onOpenPreview}
+                title="Lancer la Preview du projet"
+                className="flex items-center space-x-1 px-2.5 py-1 rounded-full bg-[#1b2f23] hover:bg-[#233d2e] text-emerald-400 hover:text-emerald-300 border border-emerald-700/50 transition-colors text-xs font-medium"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Preview</span>
+              </button>
+            )}
+
+            {/* Direct Terminal Button */}
+            {onOpenTerminal && (
+              <button
+                onClick={onOpenTerminal}
+                title="Ouvrir le Terminal E2B"
+                className="flex items-center space-x-1 px-2.5 py-1 rounded-full bg-[#1e293b] hover:bg-[#283548] text-cyan-400 hover:text-cyan-300 border border-cyan-700/50 transition-colors text-xs font-medium"
+              >
+                <Terminal className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Terminal</span>
+              </button>
+            )}
+
             <button
               onClick={fetchTree}
               title="Rafraîchir les fichiers"
@@ -361,9 +390,8 @@ export const CodeExplorerModal: React.FC<CodeExplorerModalProps> = ({
               style={{ width: `${sidebarWidth}px` }}
               className="shrink-0 bg-[#252526] border-r border-[#333] flex flex-col h-full overflow-hidden select-none transition-none"
             >
-              <div className="px-3 py-2 text-[11px] font-bold text-[#8e8e8e] uppercase tracking-wider border-b border-[#333] flex items-center justify-between">
+              <div className="px-3 py-2 text-[11px] font-bold text-[#8e8e8e] uppercase tracking-wider border-b border-[#333]">
                 <span>FICHIERS</span>
-                <span className="text-[10px] text-cyan-400 font-mono">VS Code</span>
               </div>
 
               <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">

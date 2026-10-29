@@ -329,4 +329,14 @@ export const api = {
   getWorkspaceFile: async (path: string): Promise<{ path: string; content: string }> => {
     return request(`/workspace/file?path=${encodeURIComponent(path)}`);
   },
+
+  /**
+   * Run Terminal Command in E2B Sandbox
+   */
+  runTerminalCommand: async (command: string): Promise<{ stdout: string; stderr: string; exitCode: number; executionTimeMs: number }> => {
+    return request('/code/command', {
+      method: 'POST',
+      body: JSON.stringify({ command }),
+    });
+  },
 };

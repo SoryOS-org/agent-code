@@ -1,152 +1,70 @@
 /**
- * Chat Input Component: ChatGPT-identical bottom capsule bar
- * Floating rounded pill with +, textarea, mic dictation, and voice/send controls
+ * ChatInput Component: ChatGPT-identical bottom floating input bar with attachment button, web search toggle, mic, voice mode, and send/stop actions.
  */
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowUp,
-  Square,
   Plus,
+  Mic,
+  MicOff,
+  Square,
   Globe,
+  AudioLines,
   X,
   FileCode,
   Image,
   AlertTriangle,
-  Mic,
-  MicOff,
-  AudioLines,
 } from 'lucide-react';
-
-interface AttachedFile {
-  name: string;
-  mimeType: string;
-  size: number;
-  base64Data: string;
-}
+import type { Attachment } from '@packages/types/src/index.ts';
 
 interface ChatInputProps {
-  onSendMessage: (content: string, attachments: AttachedFile[], webSearch: boolean) => void;
-  onStopGeneration: () => void;
+  onSendMessage: (
+    content: string,
+    attachments: Array<{ name: string; mimeType: string; size: number; base64Data: string }>,
+    webSearch: boolean
+  ) => void;
   isGenerating: boolean;
-  disabled?: boolean;
+  onStopGeneration: () => void;
   onOpenVoiceMode: () => void;
+  disabled?: boolean;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({
   onSendMessage,
-  onStopGeneration,
   isGenerating,
-  disabled,
+  onStopGeneration,
   onOpenVoiceMode,
+  disabled = false,
 }) => {
   const [content, setContent] = useState('');
-  const [attachments, setAttachments] = useState<AttachedFile[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [webSearch, setWebSearch] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
-
-  // Clean up speech recognition on unmount
-  useEffect(() => {
-    return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.abort();
-        } catch {
-          // ignore
-        }
-      }
-    };
-  }, []);
 
   // Auto-resize textarea
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
-    }
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
   }, [content]);
 
-  const toggleVoiceInput = () => {
-    setErrorMessage(null);
-
-    if (isListening) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {
-          // ignore
-        }
-      }
-      setIsListening(false);
-      return;
-    }
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      setErrorMessage(
-        "La reconnaissance vocale n'est pas prise en charge sur ce navigateur."
-      );
-      return;
-    }
-
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = navigator.language || 'fr-FR';
-
-      recognition.onstart = () => {
-        setIsListening(true);
-      };
-
-      recognition.onresult = (event: any) => {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          }
-        }
-
-        if (finalTranscript.trim()) {
-          setContent((prev) => {
-            const trimmedPrev = prev.trim();
-            const textToAdd = finalTranscript.trim();
-            return trimmedPrev ? `${trimmedPrev} ${textToAdd}` : textToAdd;
-          });
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        console.warn('[Web Speech API error]:', event.error);
-        if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-          setErrorMessage(
-            "Accès au microphone refusé. Veuillez l'autoriser dans les réglages de votre navigateur."
-          );
-        } else if (event.error === 'audio-capture') {
-          setErrorMessage("Aucun microphone détecté.");
-        } else if (event.error !== 'no-speech') {
-          setErrorMessage(`Erreur vocale (${event.error}).`);
-        }
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
-      setErrorMessage(`Impossible d'initialiser la saisie vocale : ${msg}`);
-      setIsListening(false);
+  const handleSubmit = () => {
+    if ((!content.trim() && attachments.length === 0) || disabled || isGenerating) return;
+    const formattedAttachments = attachments.map((att) => ({
+      ...att,
+      base64Data: att.base64Data || '',
+    }));
+    onSendMessage(content.trim(), formattedAttachments, webSearch);
+    setContent('');
+    setAttachments([]);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
     }
   };
 
@@ -157,53 +75,93 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
-  const handleSubmit = () => {
-    const trimmed = content.trim();
-    if ((!trimmed && attachments.length === 0) || isGenerating || disabled) return;
-
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-    }
-
-    onSendMessage(trimmed, attachments, webSearch);
-    setContent('');
-    setAttachments([]);
-    setErrorMessage(null);
-
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    setErrorMessage(null);
-    Array.from(files).forEach((file) => {
-      if (file.size > 8 * 1024 * 1024) {
-        setErrorMessage(`Le fichier "${file.name}" dépasse 8 Mo.`);
-        return;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.size > 10 * 1024 * 1024) {
+        setErrorMessage(`Le fichier "${file.name}" dépasse la limite de 10 Mo.`);
+        continue;
       }
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64Data = reader.result as string;
-        setAttachments((prev) => [
-          ...prev,
-          {
+      try {
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        // Upload to API
+        const res = await fetch('/api/files', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             name: file.name,
-            mimeType: file.type || 'application/octet-stream',
+            mimeType: file.type || 'text/plain',
             size: file.size,
             base64Data,
-          },
-        ]);
-      };
-      reader.readAsDataURL(file);
-    });
+          }),
+        });
 
-    if (fileInputRef.current) fileInputRef.current.value = '';
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          throw new Error(errJson.error || 'Erreur lors du téléversement du fichier');
+        }
+
+        const data = await res.json();
+        if (data.attachment) {
+          setAttachments((prev) => [...prev, data.attachment]);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setErrorMessage(msg);
+      }
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const toggleVoiceInput = () => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setErrorMessage("La reconnaissance vocale n'est pas supportée par votre navigateur.");
+      return;
+    }
+
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'fr-FR';
+      recognition.interimResults = true;
+      recognition.continuous = false;
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onresult = (event: any) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        setContent((prev) => (prev ? prev + ' ' + transcript : transcript));
+      };
+      recognition.onerror = () => setIsListening(false);
+      recognition.onend = () => setIsListening(false);
+
+      recognition.start();
+    } catch {
+      setIsListening(false);
+    }
   };
 
   const removeAttachment = (index: number) => {
@@ -355,11 +313,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             )}
           </div>
         </div>
-      </div>
-
-      {/* ChatGPT Footnote */}
-      <div className="mt-2 text-center text-[11px] text-[#8e8e8e]">
-        Aether AI peut faire des erreurs. Envisagez de vérifier les informations importantes.
       </div>
     </div>
   );

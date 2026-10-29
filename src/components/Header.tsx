@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Check,
   Code,
+  Globe,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -32,6 +33,7 @@ interface HeaderProps {
   onExportConversation: () => void;
   onOpenSettings: () => void;
   onOpenCodeExplorer?: () => void;
+  onOpenPreview?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -45,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   onExportConversation,
   onOpenSettings,
   onOpenCodeExplorer,
+  onOpenPreview,
 }) => {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -180,15 +183,27 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right: Actions & ChatGPT Capsule Pill */}
       <div className="flex items-center space-x-2">
-        {/* Dedicated "Code" Explorer Button (VS Code style) */}
+        {/* Dedicated "Code" Button */}
         {onOpenCodeExplorer && (
           <button
             onClick={onOpenCodeExplorer}
-            title="Explorateur de fichiers & Code (VS Code)"
+            title="Code"
             className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-[#2a2a2a] hover:bg-[#383838] text-cyan-400 hover:text-cyan-300 border border-[#383838] transition-all text-xs font-medium shadow-sm hover:border-cyan-500/50"
           >
             <Code className="w-3.5 h-3.5" />
             <span>Code</span>
+          </button>
+        )}
+
+        {/* Dedicated "Preview" Button */}
+        {onOpenPreview && (
+          <button
+            onClick={onOpenPreview}
+            title="Aperçu du projet en direct (Preview)"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-[#2a2a2a] hover:bg-[#383838] text-emerald-400 hover:text-emerald-300 border border-[#383838] transition-all text-xs font-medium shadow-sm hover:border-emerald-500/50"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>Preview</span>
           </button>
         )}
 
@@ -231,7 +246,20 @@ export const Header: React.FC<HeaderProps> = ({
                       className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs text-cyan-300 hover:bg-[#3c3c3c] transition-colors"
                     >
                       <Code className="w-4 h-4 text-cyan-400" />
-                      <span>Explorateur Code</span>
+                      <span>Code</span>
+                    </button>
+                  )}
+
+                  {onOpenPreview && (
+                    <button
+                      onClick={() => {
+                        onOpenPreview();
+                        setMoreMenuOpen(false);
+                      }}
+                      className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs text-emerald-300 hover:bg-[#3c3c3c] transition-colors"
+                    >
+                      <Globe className="w-4 h-4 text-emerald-400" />
+                      <span>Preview</span>
                     </button>
                   )}
 
