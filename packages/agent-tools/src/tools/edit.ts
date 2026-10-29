@@ -18,28 +18,64 @@ export const editTool = {
     required: ['path', 'targetContent', 'replacementContent'],
   },
   execute: async (args: Record<string, unknown>) => {
-    const path = (args.path as string) || '';
+    const filePath = (args.path as string);
     const targetContent = (args.targetContent as string) || '';
     const replacementContent = (args.replacementContent as string) || '';
 
-    // Read current content from sandbox
-    const readRes = await runE2BCommand(`cat ${JSON.stringify(path)}`);
-    if (readRes.exitCode !== 0) {
-      return { success: false, error: `Impossible de lire le fichier ${path} : ${readRes.stderr}` };
+    if (!filePath) {
+      return { success: false, message: 'Le chemin du fichier est requis.' };
     }
 
-    const currentText = readRes.stdout || '';
-    if (!currentText.includes(targetContent)) {
-      return { success: false, error: `Le texte cible n'a pas été trouvé dans le fichier ${path}.` };
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const workspaceRoot = path.join(process.cwd(), 'workspace');
+      const localPath = path.join(workspaceRoot, filePath);
+
+      // Security
+      if (!localPath.startsWith(workspaceRoot)) {
+        return { success: false, message: 'Accès hors workspace non autorisé.' };
+      }
+
+      let currentText = '';
+      try {
+        currentText = await fs.readFile(localPath, 'utf-8');
+      } catch (readErr) {
+        // Fallback to E2B for reading
+        const res = await runE2BCommand(`cat ${JSON.stringify(filePath)}`);
+        if (res.exitCode === 0) {
+          currentText = res.stdout || '';
+        } else {
+          throw readErr;
+        }
+      }
+
+      if (!currentText.includes(targetContent)) {
+        return { success: false, error: `Le texte cible n'a pas été trouvé dans le fichier ${filePath}.` };
+      }
+
+      const updatedText = currentText.replace(targetContent, replacementContent);
+      await fs.mkdir(path.dirname(localPath), { recursive: true });
+      await fs.writeFile(localPath, updatedText, 'utf-8');
+
+      // Sync to E2B
+      try {
+        await writeE2BFile(filePath, updatedText);
+      } catch (e2bErr) {
+        console.warn('Failed to sync edit to E2B:', e2bErr);
+      }
+
+      return {
+        success: true,
+        path: filePath,
+        message: `Fichier "${filePath}" mis à jour avec succès.`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        path: filePath,
+        message: `Erreur d'édition : ${err.message}`,
+      };
     }
-
-    const updatedText = currentText.replace(targetContent, replacementContent);
-    const writeRes = await writeE2BFile(path, updatedText);
-
-    return {
-      success: writeRes.success,
-      path,
-      message: writeRes.message,
-    };
   },
 };

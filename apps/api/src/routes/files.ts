@@ -79,6 +79,15 @@ filesRouter.get('/workspace/tree', async (_req, res) => {
       size?: number;
     }
 
+    const workspaceRoot = path.join(process.cwd(), 'workspace');
+    
+    // Ensure workspace exists
+    try {
+      await fs.access(workspaceRoot);
+    } catch {
+      await fs.mkdir(workspaceRoot, { recursive: true });
+    }
+
     async function scanDirectory(dir: string, relativePath = ''): Promise<FileNode[]> {
       const entries = await fs.readdir(dir, { withFileTypes: true });
       const nodes: FileNode[] = [];
@@ -125,8 +134,17 @@ filesRouter.get('/workspace/tree', async (_req, res) => {
       return nodes;
     }
 
-    const tree = await scanDirectory(rootDir);
-    res.json({ root: tree });
+    const tree = await scanDirectory(workspaceRoot);
+    
+    // Final deduplication by path just in case
+    const seen = new Set<string>();
+    const deduplicatedTree = tree.filter(node => {
+      if (seen.has(node.path)) return false;
+      seen.add(node.path);
+      return true;
+    });
+
+    res.json({ root: deduplicatedTree });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erreur lors de la lecture de l\'arborescence';
     res.status(500).json({ error: message });
@@ -153,7 +171,7 @@ filesRouter.get('/workspace/file', async (req, res) => {
   try {
     const fs = await import('fs/promises');
     const path = await import('path');
-    const fullPath = path.join(process.cwd(), filePath);
+    const fullPath = path.join(process.cwd(), 'workspace', filePath);
     const content = await fs.readFile(fullPath, 'utf-8');
 
     res.json({

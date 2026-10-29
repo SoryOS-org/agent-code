@@ -193,11 +193,13 @@ conversationsRouter.post('/conversations/:id/messages/stream', async (req, res) 
     });
 
     // 4. Save assistant response message to database
-    if (result.fullText.length > 0) {
+    if (result.fullText.length > 0 || (result.toolCalls && result.toolCalls.length > 0)) {
       await db.addMessage(conversationId, userId, {
         id: assistantMsgId,
         role: 'assistant',
         content: result.fullText,
+        toolCalls: result.toolCalls,
+        toolResults: result.toolResults,
         metadata: {
           model: result.model,
           provider: result.provider,

@@ -16,7 +16,29 @@ export const shellTool = {
     required: ['command'],
   },
   execute: async (args: Record<string, unknown>) => {
-    const command = (args.command as string) || 'ls -la';
-    return await runE2BCommand(command);
+    const command = (args.command as string);
+    if (!command) {
+      return { stdout: '', stderr: 'Commande manquante', exitCode: 1 };
+    }
+
+    try {
+      const { exec } = await import('child_process');
+      const path = await import('path');
+      const workspaceRoot = path.join(process.cwd(), 'workspace');
+
+      return new Promise((resolve) => {
+        exec(command, { cwd: workspaceRoot }, (error, stdout, stderr) => {
+          resolve({
+            stdout,
+            stderr,
+            exitCode: error ? error.code || 1 : 0,
+            executionTimeMs: 0, // Not measured here for simplicity
+          });
+        });
+      });
+    } catch (err: any) {
+      // Fallback to E2B
+      return await runE2BCommand(command);
+    }
   },
 };

@@ -3,7 +3,6 @@
  * Live Web & Project Preview session supporting any URL, localhost ports, HTML/React apps, and external projects
  * Features:
  * - Address bar with URL editing & Go button
- * - Quick presets: Local App (Port 3000), API Health, Vite Docs, Custom URL
  * - Responsive device modes: Desktop, Tablet (iPad), Mobile (iPhone)
  * - Reload / Refresh iframe button
  * - Open in new tab fallback
@@ -23,7 +22,6 @@ import {
   Minimize2,
   ArrowRight,
   ShieldCheck,
-  Code2,
 } from 'lucide-react';
 
 interface PreviewModalProps {
@@ -60,34 +58,27 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
   const handleReload = () => {
     setIsLoading(true);
     if (iframeRef.current) {
-      // Refresh iframe source
       iframeRef.current.src = url;
     }
-  };
-
-  const handleSetPreset = (presetUrl: string) => {
-    setInputUrl(presetUrl);
-    setUrl(presetUrl);
-    setIsLoading(true);
   };
 
   // Dimensions based on device emulation
   const getContainerStyles = () => {
     switch (deviceMode) {
       case 'mobile':
-        return 'w-[375px] h-[667px] max-h-[85vh] rounded-3xl border-[6px] border-[#333] shadow-2xl';
+        return 'w-[375px] h-[667px] max-h-[90vh] rounded-3xl border-[6px] border-[#333] shadow-2xl';
       case 'tablet':
-        return 'w-[768px] h-[900px] max-h-[85vh] rounded-2xl border-[4px] border-[#333] shadow-2xl';
+        return 'w-[768px] h-[900px] max-h-[90vh] rounded-2xl border-[4px] border-[#333] shadow-2xl';
       default:
         return 'w-full h-full rounded-b-xl border border-t-0 border-[#333]';
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-3 md:p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-2 md:p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         className={`w-full bg-[#181818] border border-[#3c3c3c] rounded-2xl shadow-2xl flex flex-col overflow-hidden font-sans transition-all duration-200 ${
-          isFullscreen ? 'h-full max-w-none rounded-none' : 'max-w-6xl h-[92vh] sm:h-[90vh]'
+          isFullscreen ? 'h-full max-w-none rounded-none' : 'max-w-7xl h-[97vh] sm:h-[96vh]'
         }`}
       >
         {/* Top Browser Bar */}
@@ -128,8 +119,8 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
               type="text"
               value={inputUrl}
               onChange={(e) => setInputUrl(e.target.value)}
-              placeholder="Entrez une URL de projet (ex: http://localhost:3000, https://example.com)..."
-              className="w-full bg-transparent text-white font-mono placeholder-[#666] outline-hidden text-[11px] sm:text-xs"
+              placeholder="Entrez une URL (ex: http://localhost:3000, https://example.com)..."
+              className="w-full bg-transparent text-white font-mono placeholder-[#666] outline-none text-[11px] sm:text-xs"
             />
             <button
               type="submit"
@@ -219,37 +210,8 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
           </div>
         </div>
 
-        {/* Quick Presets Ribbon */}
-        <div className="h-7 bg-[#1c1c1c] px-4 border-b border-[#292929] flex items-center space-x-2 text-[11px] overflow-x-auto no-scrollbar select-none">
-          <span className="text-[#666] font-mono text-[10px] uppercase">Raccourcis :</span>
-          <button
-            onClick={() => handleSetPreset(typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')}
-            className="px-2 py-0.5 rounded bg-[#292929] hover:bg-[#383838] text-[#ccc] hover:text-white transition-colors"
-          >
-            Application locale (3000)
-          </button>
-          <button
-            onClick={() => handleSetPreset('/api/health')}
-            className="px-2 py-0.5 rounded bg-[#292929] hover:bg-[#383838] text-[#ccc] hover:text-white transition-colors"
-          >
-            API Health (/api/health)
-          </button>
-          <button
-            onClick={() => handleSetPreset('/api/models')}
-            className="px-2 py-0.5 rounded bg-[#292929] hover:bg-[#383838] text-[#ccc] hover:text-white transition-colors"
-          >
-            API Modèles (/api/models)
-          </button>
-          <button
-            onClick={() => handleSetPreset('https://example.com')}
-            className="px-2 py-0.5 rounded bg-[#292929] hover:bg-[#383838] text-[#ccc] hover:text-white transition-colors"
-          >
-            Web externe (Example)
-          </button>
-        </div>
-
         {/* Preview Frame Container */}
-        <div className="flex-1 bg-[#101010] flex items-center justify-center p-2 sm:p-4 overflow-hidden relative">
+        <div className="flex-1 bg-[#101010] flex items-center justify-center p-1 sm:p-2 overflow-hidden relative">
           <div className={`transition-all duration-300 overflow-hidden bg-white ${getContainerStyles()}`}>
             <iframe
               ref={iframeRef}

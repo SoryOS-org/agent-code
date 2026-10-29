@@ -10,18 +10,18 @@ import { executeSecureCode } from './code-executor.js';
 /**
  * Write or modify a file inside E2B Cloud Sandbox
  */
-export async function writeE2BFile(path: string, content: string): Promise<{ success: boolean; path: string; message: string }> {
-  const apiKey = process.env.E2B_API_KEY || 'e2b_36dc65b1815ea00af20407c9ba6f42d8c5f6487e';
+export async function writeE2BFile(path: string, content: string, dynamicApiKey?: string): Promise<{ success: boolean; path: string; message: string }> {
+  const apiKey = dynamicApiKey || process.env.E2B_API_KEY || 'e2b_36dc65b1815ea00af20407c9ba6f42d8c5f6487e';
   try {
     const sandbox = await Sandbox.create({ apiKey });
-    const targetPath = path.startsWith('/') ? path : `/tmp/${path}`;
-    await sandbox.files.write(targetPath, content);
+    // Use path as provided, relative paths will be relative to sandbox root/home
+    await sandbox.files.write(path, content);
     await sandbox.kill();
 
     return {
       success: true,
-      path: targetPath,
-      message: `Fichier "${targetPath}" créé et sauvegardé avec succès dans la Sandbox E2B.`,
+      path: path,
+      message: `Fichier "${path}" créé et sauvegardé avec succès dans la Sandbox E2B.`,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -36,9 +36,9 @@ export async function writeE2BFile(path: string, content: string): Promise<{ suc
 /**
  * Run arbitrary shell command inside E2B Cloud Sandbox
  */
-export async function runE2BCommand(command: string): Promise<{ stdout: string; stderr: string; exitCode: number; executionTimeMs: number }> {
+export async function runE2BCommand(command: string, dynamicApiKey?: string): Promise<{ stdout: string; stderr: string; exitCode: number; executionTimeMs: number }> {
   const startTime = Date.now();
-  const apiKey = process.env.E2B_API_KEY || 'e2b_36dc65b1815ea00af20407c9ba6f42d8c5f6487e';
+  const apiKey = dynamicApiKey || process.env.E2B_API_KEY || 'e2b_36dc65b1815ea00af20407c9ba6f42d8c5f6487e';
   let sandbox: Sandbox | null = null;
   try {
     sandbox = await Sandbox.create({ apiKey });
@@ -88,6 +88,41 @@ export async function runE2BCommand(command: string): Promise<{ stdout: string; 
       exitCode: 1,
       executionTimeMs: Date.now() - startTime,
     };
+  }
+}
+
+/**
+ * Install common development tools in E2B Cloud Sandbox
+ */
+export async function installE2BTool(toolName: string, dynamicApiKey?: string): Promise<{ success: boolean; message: string }> {
+  const apiKey = dynamicApiKey || process.env.E2B_API_KEY || 'e2b_36dc65b1815ea00af20407c9ba6f42d8c5f6487e';
+  const sandbox = await Sandbox.create({ apiKey });
+  
+  try {
+    // Check if already installed
+    const checkRes = await sandbox.commands.run(`which ${toolName}`);
+    if (checkRes.exitCode === 0) {
+      await sandbox.kill();
+      return { success: true, message: `Outil ${toolName} est déjà installé à : ${checkRes.stdout.trim()}` };
+    }
+
+    // Try installing based on tool name (simplified mapping)
+    let installCmd = '';
+    if (toolName === 'rustc' || toolName === 'cargo') installCmd = 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source $HOME/.cargo/env';
+    else if (toolName === 'go') installCmd = 'curl -L https://go.dev/dl/go1.21.0.linux-amd64.tar.gz | tar -C /usr/local -xz';
+    else installCmd = `apt-get update && apt-get install -y ${toolName}`;
+
+    const res = await sandbox.commands.run(installCmd);
+    await sandbox.kill();
+
+    if (res.exitCode === 0) {
+      return { success: true, message: `Outil ${toolName} installé avec succès.` };
+    } else {
+      return { success: false, message: `Échec installation ${toolName}: ${res.stderr}` };
+    }
+  } catch (err: unknown) {
+    await sandbox.kill();
+    return { success: false, message: `Erreur d'installation ${toolName}: ${err}` };
   }
 }
 

@@ -105,6 +105,7 @@ export type StreamEventType =
   | 'text_delta'
   | 'reasoning_delta'
   | 'tool_call'
+  | 'tool_result'
   | 'message_complete'
   | 'error';
 
@@ -124,12 +125,17 @@ export interface StreamEventPayload {
   tool_call: {
     toolCall: ToolCall;
   };
+  tool_result: {
+    result: ToolResult;
+  };
   message_complete: {
     messageId: string;
     totalTokens?: number;
     latencyMs?: number;
     finishReason: string;
     fullText: string;
+    toolCalls?: ToolCall[];
+    toolResults?: ToolResult[];
   };
   error: {
     code: string;

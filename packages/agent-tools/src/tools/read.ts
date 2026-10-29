@@ -16,13 +16,45 @@ export const readTool = {
     required: ['path'],
   },
   execute: async (args: Record<string, unknown>) => {
-    const path = (args.path as string) || '';
-    const res = await runE2BCommand(`cat ${JSON.stringify(path)}`);
-    return {
-      path,
-      content: res.stdout || '',
-      error: res.stderr || undefined,
-      success: res.exitCode === 0,
-    };
+    const filePath = (args.path as string);
+    if (!filePath) {
+      return { success: false, message: 'Le chemin du fichier est requis.' };
+    }
+
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const workspaceRoot = path.join(process.cwd(), 'workspace');
+      const fullPath = path.join(workspaceRoot, filePath);
+
+      // Security
+      if (!fullPath.startsWith(workspaceRoot)) {
+        return { success: false, message: 'Accès hors workspace non autorisé.' };
+      }
+
+      const content = await fs.readFile(fullPath, 'utf-8');
+      return {
+        path: filePath,
+        content,
+        success: true,
+      };
+    } catch (err: any) {
+      // Fallback to E2B if not found locally (maybe created via shell in E2B?)
+      try {
+        const res = await runE2BCommand(`cat ${JSON.stringify(filePath)}`);
+        return {
+          path: filePath,
+          content: res.stdout || '',
+          error: res.exitCode !== 0 ? res.stderr : undefined,
+          success: res.exitCode === 0,
+        };
+      } catch (e2bErr: any) {
+        return {
+          path: filePath,
+          error: `Fichier non trouvé localement ni dans E2B : ${err.message}`,
+          success: false,
+        };
+      }
+    }
   },
 };

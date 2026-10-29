@@ -6,6 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import type { Message } from '@packages/types/src/index.ts';
 import { MarkdownRenderer } from './MarkdownRenderer.tsx';
+import { ThoughtAccordion } from './ThoughtAccordion.tsx';
+import { AgentActionsView } from './AgentActionsView.tsx';
 import {
   Copy,
   Check,
@@ -141,6 +143,22 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   return (
     <div className="w-full max-w-3xl mx-auto px-4 md:px-0 py-3.5">
       <div className="space-y-2">
+        {/* Agent Thought / Reasoning */}
+        {message.metadata?.finishReason === 'stop' && !isStreaming && (
+           // Placeholder for complex reasoning if we had a dedicated field, 
+           // for now just show if finishReason is stop and we have content
+           null
+        )}
+
+        {/* Agent Actions / Tool Calls */}
+        {(message.toolCalls?.length || 0) > 0 && (
+          <AgentActionsView 
+            toolCalls={message.toolCalls || []} 
+            toolResults={message.toolResults || []}
+            isStreaming={isStreaming}
+          />
+        )}
+
         {/* Rendered content */}
         <div className="text-[15px] leading-relaxed text-[#ececec] select-text">
           <MarkdownRenderer content={message.content} isStreaming={isStreaming} />

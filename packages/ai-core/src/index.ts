@@ -196,15 +196,15 @@ export class ToolRegistry {
       this.register(tool);
     }
 
-    // Register Full E2B Agent Tools (Code execution, write file, run command)
-    const e2bTools = createE2BAgentTools();
-    for (const tool of e2bTools) {
+    // Register Core Agent Tools (Connect to E2B by default if available)
+    const agentTools = createAgentTools();
+    for (const tool of agentTools) {
       this.register(tool);
     }
 
-    // Register OpenCode Modular Workspace Agent Tools (shell, read, write, grep)
-    const agentTools = createAgentTools();
-    for (const tool of agentTools) {
+    // Ensure E2B specific names are also registered as aliases or specific tools if needed
+    const e2bTools = createE2BAgentTools();
+    for (const tool of e2bTools) {
       this.register(tool);
     }
   }
@@ -302,130 +302,32 @@ export class ConversationEngine {
       createdAt: new Date().toISOString(),
     };
 
-    const e2bCapabilitiesInstruction = `\n\n[CAPACITÉS ACTIVES D'AGENT DÉVELOPPEUR FULL AUTONOME : OPENCODE / CODEX / REPLIT STYLE]
-Tu es Aether AI, un agent développeur autonome connecté directement à un environnement d'exécution complet E2B Cloud Sandbox.
-Tes capacités d'agent incluent :
-1. Exécution de code en direct (Python, JavaScript, TypeScript) via 'e2b_code_interpreter'.
-2. Création et modification de fichiers (code source, scripts, README, config) via 'e2b_write_file'.
-3. Exécution de commandes terminal shell (pip install, npm install, git, bash, scripts) via 'e2b_run_command'.
-4. Recherche Web en direct avec sources cliquables.
+    const e2bCapabilitiesInstruction = `
+[IDENTITÉ ET MISSIONS]
+Tu es Aether AI, un agent de programmation autonome de type OpenCode.
+Ton but est de réaliser ENTIÈREMENT la tâche demandée dans le workspace.
 
-Si l'utilisateur te demande si tu es capable d'exécuter, créer, modifier du code ou de gérer un projet comme OpenCode, Codex ou Replit : Réponds OUI avec enthousiasme et assurance, puis exécute ou génère le code/fichier immédiatement !
+[RÈGLES CRITIQUES]
+1. FIDÉLITÉ : Si on demande un "jeu de voiture", tu FAIS un jeu de voiture. Ne change jamais le sujet (pas de "jeu de devinettes").
+2. ACTION RÉELLE : Toute intention de créer ou modifier du code DOIT passer par l'outil 'write'. Ne te contente pas d'écrire le code dans ton message, appelle l'outil !
+3. CHEMINS COMPLETS : Donne toujours le chemin complet du fichier (ex: index.html, src/game.ts).
+4. TECHNOLOGIE : Préfère HTML5 (Canvas/JS/CSS) pour les jeux afin qu'ils soient visibles dans la Preview.
+
+[MÉTHODOLOGIE]
+- PLAN : Annonce ton plan brièvement.
+- ACTION : Appelle TOUS les outils nécessaires (write, shell) immédiatement. N'attends pas de confirmation.
+- VÉRIFICATION : Utilise 'ls' pour vérifier la présence des fichiers.
+
+[OUTILS DISPONIBLES]
+- 'write'(path, content) : CRÉER/MODIFIER un fichier.
+- 'read'(path) : LIRE un fichier.
+- 'ls'(path) : LISTER les fichiers.
+- 'shell'(command) : EXÉCUTER des commandes (npm, git, etc.).
+
+Interdiction de simuler. Si tu ne vois pas de résultat d'outil 'success: true', la tâche n'est pas faite.
 ---------------------------------------------------------------------------------------------------\n`;
 
     let effectiveSystemPrompt = (options.systemPrompt || '') + e2bCapabilitiesInstruction;
-
-    // Auto-detect web search intent if not explicitly enabled
-    let effectiveWebSearch = options.webSearch;
-    if (!effectiveWebSearch && options.prompt) {
-      const lowerPrompt = options.prompt.toLowerCase();
-      const searchKeywords = [
-        'recherche',
-        'recherches',
-        'rechercher',
-        'cherche',
-        'chercher',
-        'search',
-        'actu',
-        'actualité',
-        'actualités',
-        'sur internet',
-        'sur le web',
-        'sur google',
-        'news',
-        'dernières nouvelles',
-        'dernier',
-        'récent',
-        'récente',
-        'trouve',
-        'informe-moi',
-      ];
-      if (searchKeywords.some((kw) => lowerPrompt.includes(kw))) {
-        effectiveWebSearch = true;
-      }
-    }
-
-    // If web search is active or auto-detected, execute websearch tool and ground conversation with structured sources
-    if (effectiveWebSearch) {
-      const searchTool = this.toolRegistry.get('websearch');
-      if (searchTool) {
-        const searchCallId = `tool_search_${Date.now()}`;
-        options.onEvent({
-          event: 'tool_call',
-          data: {
-            toolCall: {
-              id: searchCallId,
-              name: 'websearch',
-              args: { query: options.prompt, numResults: 5 },
-            },
-          },
-        });
-
-        try {
-          const searchData = (await searchTool.execute({
-            query: options.prompt,
-            numResults: 5,
-          })) as WebSearchResponse;
-
-          if (searchData && Array.isArray(searchData.results) && searchData.results.length > 0) {
-            const formattedSources = searchData.results
-              .map(
-                (item, idx) =>
-                  `[Source ${idx + 1}] Titre: "${item.title}"\nURL: ${item.url}\nDomaine: ${item.source}\nExtrait: ${item.snippet}`
-              )
-              .join('\n\n');
-
-            const groundingInstruction = `\n\n--- DONNÉES DE RECHERCHE WEB EN DIRECT (OpenCode Engine: ${searchData.provider === 'exa' ? 'Exa Neural Search' : 'Web Search'}) ---\nRequête: "${options.prompt}"\n\n${formattedSources}\n\nCONSIGNES DE SOURÇAGE :\n1. Répondez précisément à la question en utilisant ces faits récents trouvés sur le Web.\n2. Citez explicitement chaque information avec des liens Markdown cliquables : [Titre de la source](URL).\n3. À la fin de la réponse, incluez systématiquement une section "### 🌐 Sources & Liens" avec les liens directs vers les pages consultées.\n---------------------------------------------------`;
-
-            effectiveSystemPrompt += groundingInstruction;
-          }
-        } catch (searchErr) {
-          console.warn('[ConversationEngine] Web search execution error:', searchErr);
-        }
-      }
-    }
-
-    // Auto-detect code execution intent if user prompt contains code blocks or run requests
-    const lowerPromptForCode = options.prompt.toLowerCase();
-    if (
-      lowerPromptForCode.includes('exécute') ||
-      lowerPromptForCode.includes('execute') ||
-      lowerPromptForCode.includes('lance') ||
-      lowerPromptForCode.includes('run') ||
-      options.prompt.includes('```')
-    ) {
-      const codeMatch = options.prompt.match(/```([a-zA-Z]*)\n([\s\S]*?)```/);
-      if (codeMatch) {
-        const langRaw = codeMatch[1].toLowerCase();
-        const codeToRun = codeMatch[2];
-        const language = langRaw.includes('py') ? 'python' : 'javascript';
-
-        const codeTool = this.toolRegistry.get('e2b_code_interpreter');
-        if (codeTool) {
-          const callId = `tool_code_${Date.now()}`;
-          options.onEvent({
-            event: 'tool_call',
-            data: {
-              toolCall: {
-                id: callId,
-                name: 'e2b_code_interpreter',
-                args: { language, code: codeToRun },
-              },
-            },
-          });
-
-          try {
-            const execResult = (await codeTool.execute({ language, code: codeToRun })) as any;
-            if (execResult) {
-              const execContext = `\n\n--- RÉSULTAT DE L'EXÉCUTION DU CODE (E2B Sandbox / Secure Runtime) ---\nEnvironnement: ${execResult.environment}\nCode de sortie: ${execResult.exitCode}\nTemps d'exécution: ${execResult.executionTimeMs}ms\n\nSTDOUT :\n\`\`\`\n${execResult.stdout || '(vide)'}\n\`\`\`\n\nSTDERR :\n\`\`\`\n${execResult.stderr || '(aucune)'}\n\`\`\`\n-------------------------------------------------------------`;
-              effectiveSystemPrompt += execContext;
-            }
-          } catch (execErr) {
-            console.warn('[ConversationEngine] Code execution error:', execErr);
-          }
-        }
-      }
-    }
 
     const fullHistory = [...options.history, newUserMessage];
     const preparedMessages = this.contextManager.prepareContext(
@@ -446,63 +348,197 @@ Si l'utilisateur te demande si tu es capable d'exécuter, créer, modifier du co
 
     let fullText = '';
     let finishReason = 'stop';
+    let currentHistory = preparedMessages;
+    let loopCount = 0;
+    const maxLoops = 15; // Increased for complex task sequences
+    const allToolCalls: ToolCall[] = [];
+    const allToolResults: ToolResult[] = [];
+
+    const availableTools = this.toolRegistry.getAll();
 
     try {
-      const stream = provider.generateStream({
-        modelId: selectedModelId,
-        messages: preparedMessages,
-        systemInstruction: effectiveSystemPrompt,
-        temperature: options.temperature,
-        webSearch: options.webSearch,
-        signal: options.signal,
-      });
+      while (loopCount < maxLoops) {
+        loopCount++;
+        let currentIterText = '';
+        const currentIterToolCalls: ToolCall[] = [];
 
-      for await (const chunk of stream) {
-        if (options.signal?.aborted) {
-          finishReason = 'aborted';
-          break;
-        }
+        const stream = provider.generateStream({
+          modelId: selectedModelId,
+          messages: currentHistory,
+          systemInstruction: effectiveSystemPrompt,
+          temperature: options.temperature,
+          webSearch: options.webSearch,
+          tools: availableTools,
+          signal: options.signal,
+        });
 
-        if (chunk.type === 'delta' && chunk.text) {
-          fullText += chunk.text;
-          options.onEvent({
-            event: 'text_delta',
-            data: { delta: chunk.text },
-          });
-        } else if (chunk.type === 'reasoning' && chunk.text) {
-          options.onEvent({
-            event: 'reasoning_delta',
-            data: { delta: chunk.text },
-          });
-        } else if (chunk.type === 'tool_call' && chunk.toolCall) {
-          options.onEvent({
-            event: 'tool_call',
-            data: { toolCall: chunk.toolCall },
-          });
-        } else if (chunk.type === 'finish') {
-          if (chunk.finishReason) finishReason = chunk.finishReason;
-        }
-      }
-
-      // Process XML tool calls if emitted in text by models (e.g. OpenRouter free LLMs)
-      if (fullText.includes('<tool_call>')) {
-        const xmlCalls = extractXmlToolCalls(fullText);
-        if (xmlCalls.length > 0) {
-          const executed = await executeXmlToolCalls(xmlCalls);
-          const cleanedText = cleanXmlToolCallsFromText(fullText);
-
-          let toolResultsSummary = '\n\n### ⚡ Action(s) E2B Exécutée(s) :\n';
-          for (const item of executed) {
-            if (item.toolName === 'e2b_write_file') {
-              toolResultsSummary += `- **Fichier créé dans la Sandbox E2B** : \`${item.result.path}\` (${item.result.message})\n`;
-            } else if (item.toolName === 'e2b_run_command') {
-              toolResultsSummary += `\n**Commande E2B** : \`${item.result.command || 'bash'}\` (Code ${item.result.exitCode})\n\`\`\`\n${item.result.stdout || item.result.stderr || '(succès)'}\n\`\`\`\n`;
-            } else if (item.toolName === 'e2b_code_interpreter') {
-              toolResultsSummary += `\n--- RÉSULTAT DE L'EXÉCUTION DU CODE (E2B Sandbox / Secure Runtime) ---\nEnvironnement: ${item.result.environment}\nCode de sortie: ${item.result.exitCode}\nTemps d'exécution: ${item.result.executionTimeMs}ms\n\nSTDOUT :\n\`\`\`\n${item.result.stdout || '(vide)'}\n\`\`\`\n\nSTDERR :\n\`\`\`\n${item.result.stderr || '(aucune)'}\n\`\`\`\n-------------------------------------------------------------\n`;
-            }
+        for await (const chunk of stream) {
+          if (options.signal?.aborted) {
+            finishReason = 'aborted';
+            break;
           }
 
-          fullText = cleanedText + toolResultsSummary;
+          if (chunk.type === 'delta' && chunk.text) {
+            currentIterText += chunk.text;
+            fullText += chunk.text;
+            options.onEvent({
+              event: 'text_delta',
+              data: { delta: chunk.text },
+            });
+          } else if (chunk.type === 'reasoning' && chunk.text) {
+            options.onEvent({
+              event: 'reasoning_delta',
+              data: { delta: chunk.text },
+            });
+          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+            currentIterToolCalls.push(chunk.toolCall);
+            allToolCalls.push(chunk.toolCall);
+            options.onEvent({
+              event: 'tool_call',
+              data: { toolCall: chunk.toolCall },
+            });
+          } else if (chunk.type === 'finish') {
+            if (chunk.finishReason) finishReason = chunk.finishReason;
+          }
+        }
+
+        if (options.signal?.aborted) break;
+
+        // Detect XML Tool Calls in currentIterText
+        const xmlCalls = extractXmlToolCalls(currentIterText);
+        const hasXmlCalls = xmlCalls.length > 0;
+        // Execute Tools
+        const results: ToolResult[] = [];
+
+        // Execute Native Tool Calls (Filtered for valid names)
+        const validNativeCalls = currentIterToolCalls.filter(tc => tc.name && tc.name.trim().length > 0);
+        const hasNativeCalls = validNativeCalls.length > 0;
+
+        // Force execution if model is just talking or drifting
+        if (!hasNativeCalls && !hasXmlCalls) {
+          const suspectDrift = currentIterText.toLowerCase().includes('devinette') || 
+                              currentIterText.toLowerCase().includes('guessing') ||
+                              (options.prompt.toLowerCase().includes('jeu de voiture') && currentIterText.toLowerCase().includes('python'));
+          
+          const isJustPlanning = currentIterText.toLowerCase().includes('plan :') || 
+                                currentIterText.toLowerCase().includes('voici mon plan') ||
+                                currentIterText.length > 50;
+
+          if (loopCount <= 3 && (suspectDrift || isJustPlanning)) {
+            const reminder = suspectDrift 
+                ? `ALERTE FIDÉLITÉ : Tu t'éloignes de la demande initiale ("${options.prompt}"). NE FAIS PAS de jeu de devinettes ou de script Python si ce n'est pas demandé. Crée le projet EXACT (ex: Jeu de voiture HTML5/Canvas) MAINTENANT en utilisant l'outil 'write'.`
+                : `Plan reçu. Maintenant, PASSE À L'ACTION immédiatement. Utilise 'write' pour créer les fichiers et 'shell' pour les commandes. Ne t'arrête pas tant que le projet n'est pas fonctionnel.`;
+
+            currentHistory.push({
+              id: `ast-plan-${Date.now()}-${loopCount}`,
+              conversationId: options.conversationId,
+              role: 'assistant',
+              content: currentIterText,
+              createdAt: new Date().toISOString(),
+            });
+            currentHistory.push({
+              id: `sys-force-${Date.now()}-${loopCount}`,
+              conversationId: options.conversationId,
+              role: 'user',
+              content: reminder,
+              createdAt: new Date().toISOString(),
+            });
+            continue;
+          }
+          break; // Stop if no tool calls and no drift/planning detected
+        }
+
+        // Execute Native Tool Calls
+        for (const tc of validNativeCalls) {
+          const tool = this.toolRegistry.get(tc.name);
+          let res: any;
+          let error: string | undefined;
+
+          if (tool) {
+            try {
+              res = await tool.execute(tc.args);
+            } catch (err) {
+              error = String(err);
+            }
+          } else {
+            error = `Outil "${tc.name}" non trouvé.`;
+          }
+
+          const toolResult = {
+            toolCallId: tc.id,
+            name: tc.name,
+            result: res || null,
+            error,
+          };
+
+          results.push(toolResult);
+          options.onEvent({
+            event: 'tool_result',
+            data: { result: toolResult },
+          });
+        }
+
+        // Execute XML Tool Calls
+        if (hasXmlCalls) {
+          const executedXml = await executeXmlToolCalls(xmlCalls);
+          for (const item of executedXml) {
+            const toolResult = {
+              toolCallId: `xml_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              name: item.toolName,
+              result: item.result,
+            };
+            results.push(toolResult);
+            options.onEvent({
+              event: 'tool_result',
+              data: { result: toolResult },
+            });
+          }
+          // Clean XML from text for history
+          const cleanedText = cleanXmlToolCallsFromText(currentIterText);
+          
+          currentHistory.push({
+            id: `ast-xml-${Date.now()}`,
+            conversationId: options.conversationId,
+            role: 'assistant',
+            content: cleanedText || "Exécution d'actions...",
+            createdAt: new Date().toISOString(),
+          });
+
+          const xmlResultsText = results.filter(r => r.toolCallId.startsWith('xml')).map(r => 
+            `--- RÉSULTAT OUTIL : ${r.name} ---\n${JSON.stringify(r.result, null, 2)}`
+          ).join('\n\n');
+          
+          currentHistory.push({
+            id: `xml-res-${Date.now()}`,
+            conversationId: options.conversationId,
+            role: 'user',
+            content: `RÉSULTATS DES ACTIONS :\n${xmlResultsText}\n\nContinue la tâche.`,
+            createdAt: new Date().toISOString(),
+          });
+        } else if (validNativeCalls.length > 0) {
+          currentHistory.push({
+            id: `ast-tc-${Date.now()}`,
+            conversationId: options.conversationId,
+            role: 'assistant',
+            content: currentIterText,
+            toolCalls: validNativeCalls,
+            createdAt: new Date().toISOString(),
+          });
+
+          currentHistory.push({
+            id: `tool-res-${Date.now()}`,
+            conversationId: options.conversationId,
+            role: 'tool',
+            content: 'Tool results',
+            toolResults: results.filter(r => !r.toolCallId.startsWith('xml')),
+            createdAt: new Date().toISOString(),
+          });
+        }
+
+        allToolResults.push(...results);
+
+        if (finishReason !== 'tool_calls' && !hasXmlCalls && !hasNativeCalls) {
+          break;
         }
       }
 
@@ -517,6 +553,8 @@ Si l'utilisateur te demande si tu es capable d'exécuter, créer, modifier du co
           latencyMs,
           finishReason,
           fullText,
+          toolCalls: allToolCalls,
+          toolResults: allToolResults,
         },
       });
 
@@ -527,6 +565,8 @@ Si l'utilisateur te demande si tu es capable d'exécuter, créer, modifier du co
         model: selectedModelId,
         provider: provider.id,
         finishReason,
+        toolCalls: allToolCalls,
+        toolResults: allToolResults,
       };
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -535,7 +575,7 @@ Si l'utilisateur te demande si tu es capable d'exécuter, créer, modifier du co
         data: {
           code: 'GENERATION_ERROR',
           message: errorMsg,
-          hint: 'Vérifiez la connexion réseau, les quotas ou la validité de la clé API.',
+          hint: 'Vérifiez la connexion réseau ou la validité de la clé API.',
         },
       });
       throw err;

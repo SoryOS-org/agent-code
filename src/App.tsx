@@ -57,6 +57,7 @@ export default function App() {
   // OpenCode Agent Task State
   const [agentTasks, setAgentTasks] = useState<TaskItem[]>([]);
   const [activeE2BTool, setActiveE2BTool] = useState<string | undefined>(undefined);
+  const [lastWorkspaceUpdate, setLastWorkspaceUpdate] = useState(0);
 
   const activeStreamAbortRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -328,31 +329,72 @@ export default function App() {
             );
           } else if (event.event === 'tool_call') {
             const toolCall = (event.data as any).toolCall;
-            if (toolCall?.name) {
+            if (toolCall) {
+              setStreamingMessage((prev) => {
+                if (!prev) return null;
+                const calls = [...(prev.toolCalls || [])];
+                const existingIdx = calls.findIndex(tc => tc.id === toolCall.id);
+                if (existingIdx >= 0) {
+                  calls[existingIdx] = { ...calls[existingIdx], ...toolCall };
+                } else {
+                  calls.push(toolCall);
+                }
+                return { ...prev, toolCalls: calls };
+              });
               setActiveE2BTool(toolCall.name);
-              setAgentTasks((prev) => [
-                ...prev,
-                {
-                  id: `task_${Date.now()}_${prev.length}`,
-                  title: `Exécution E2B : ${toolCall.name}`,
-                  status: 'in_progress',
-                  toolName: toolCall.name,
-                },
-              ]);
+              
+              setAgentTasks((prev) => {
+                const existing = prev.find(t => t.id === toolCall.id);
+                if (existing) return prev;
+                return [
+                  ...prev,
+                  {
+                    id: toolCall.id,
+                    title: `Exécution : ${toolCall.name || 'Action en cours...'}`,
+                    status: 'in_progress',
+                    toolName: toolCall.name,
+                  },
+                ];
+              });
+            }
+          } else if (event.event === 'tool_result') {
+            const result = (event.data as any).result;
+            if (result) {
+              setStreamingMessage((prev) => {
+                if (!prev) return null;
+                const results = [...(prev.toolResults || [])];
+                const existingIdx = results.findIndex(r => r.toolCallId === result.toolCallId);
+                if (existingIdx >= 0) {
+                  results[existingIdx] = result;
+                } else {
+                  results.push(result);
+                }
+                return { ...prev, toolResults: results };
+              });
+              setAgentTasks((prev) =>
+                prev.map((t) =>
+                  t.id === result.toolCallId || (t.toolName === result.name && t.status === 'in_progress')
+                    ? { 
+                        ...t, 
+                        title: `Exécution : ${result.name}`,
+                        status: result.error ? 'failed' : 'completed' 
+                      }
+                    : t
+                )
+              );
             }
           } else if (event.event === 'message_complete') {
             setActiveE2BTool(undefined);
-            setAgentTasks((prev) =>
-              prev.map((t) => (t.status === 'in_progress' ? { ...t, status: 'completed' } : t))
-            );
             const data = event.data as any;
             const finalizedMsg: Message = {
               id: assistantMsgId,
               conversationId: convId!,
               role: 'assistant',
               content: data.fullText || accumulatedContent,
+              toolCalls: data.toolCalls,
+              toolResults: data.toolResults,
               metadata: {
-                model: selectedModelId,
+                model: data.model || selectedModelId,
                 tokens: data.totalTokens,
                 latencyMs: data.latencyMs,
                 finishReason: data.finishReason,
@@ -362,6 +404,10 @@ export default function App() {
             setMessages((prev) => [...prev, finalizedMsg]);
             setStreamingMessage(null);
             setIsGenerating(false);
+
+            if (data.toolCalls && data.toolCalls.length > 0) {
+              setLastWorkspaceUpdate(Date.now());
+            }
 
             // Refresh conversation title in sidebar if updated
             api.getConversation(convId!).then((updatedConv) => {
@@ -557,6 +603,7 @@ export default function App() {
         onSendToChat={(snippet) => handleSendMessage(snippet, [], false)}
         onOpenPreview={() => setPreviewModalOpen(true)}
         onOpenTerminal={() => setTerminalModalOpen(true)}
+        refreshTrigger={lastWorkspaceUpdate}
       />
 
       {/* Live Project & URL Preview Modal */}

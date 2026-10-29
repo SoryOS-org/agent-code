@@ -19,7 +19,7 @@ export interface CodeExecutionResult {
   environment: string;
 }
 
-export async function executeSecureCode(args: CodeExecutionArgs): Promise<CodeExecutionResult> {
+export async function executeSecureCode(args: CodeExecutionArgs, dynamicApiKey?: string): Promise<CodeExecutionResult> {
   const startTime = Date.now();
   const { language, code } = args;
 
@@ -33,8 +33,8 @@ export async function executeSecureCode(args: CodeExecutionArgs): Promise<CodeEx
     };
   }
 
-  // Check if E2B API key is configured
-  const apiKey = process.env.E2B_API_KEY || 'e2b_36dc65b1815ea00af20407c9ba6f42d8c5f6487e';
+  // Check if E2B API key is configured (use dynamic if provided, otherwise fallback to env)
+  const apiKey = dynamicApiKey || process.env.E2B_API_KEY || 'e2b_36dc65b1815ea00af20407c9ba6f42d8c5f6487e';
 
   if (apiKey && apiKey.trim().length > 0) {
     try {

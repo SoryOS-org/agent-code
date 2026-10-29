@@ -15,13 +15,36 @@ export const lsTool = {
     },
   },
   execute: async (args: Record<string, unknown>) => {
-    const path = (args.path as string) || '.';
-    const res = await runE2BCommand(`ls -la ${JSON.stringify(path)}`);
-    return {
-      path,
-      output: res.stdout || '',
-      error: res.stderr || undefined,
-      success: res.exitCode === 0,
-    };
+    const dirPath = (args.path as string) || '.';
+    
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const workspaceRoot = path.join(process.cwd(), 'workspace');
+      const fullPath = path.join(workspaceRoot, dirPath);
+
+      // Security
+      if (!fullPath.startsWith(workspaceRoot)) {
+        return { success: false, message: 'Accès hors workspace non autorisé.' };
+      }
+
+      const entries = await fs.readdir(fullPath, { withFileTypes: true });
+      const output = entries.map(e => `${e.isDirectory() ? 'd' : 'f'} ${e.name}`).join('\n');
+      
+      return {
+        path: dirPath,
+        output: output || '(dossier vide)',
+        success: true,
+      };
+    } catch (err: any) {
+      // Fallback to E2B
+      const res = await runE2BCommand(`ls -la ${JSON.stringify(dirPath)}`);
+      return {
+        path: dirPath,
+        output: res.stdout || '',
+        error: res.stderr || undefined,
+        success: res.exitCode === 0,
+      };
+    }
   },
 };

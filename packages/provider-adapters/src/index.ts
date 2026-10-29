@@ -21,6 +21,8 @@ export interface ProviderStreamOptions {
   temperature?: number;
   maxTokens?: number;
   webSearch?: boolean;
+  tools?: any[]; // Simplified for adapters
+  toolChoice?: string | { type: 'function'; function: { name: string } };
   signal?: AbortSignal;
 }
 
@@ -120,23 +122,47 @@ export class GeminiAdapter implements ProviderAdapter {
       });
     }
 
-    // Convert messages to Gemini format
     const contents: Array<{ role: 'user' | 'model'; parts: Array<Record<string, unknown>> }> = [];
 
     for (const msg of options.messages) {
       if (msg.role === 'system') continue; // handled via systemInstruction
 
+      if (msg.role === 'tool' && msg.toolResults) {
+        contents.push({
+          role: 'user', // Gemini expects tool results to be within a 'user' turn (actually tool role but SDK mapping is tricky)
+          parts: msg.toolResults.map((res) => ({
+            functionResponse: {
+              name: res.name,
+              response: {
+                content: typeof res.result === 'string' ? res.result : JSON.stringify(res.result),
+              },
+            },
+          })),
+        });
+        continue;
+      }
+
       const role = msg.role === 'assistant' ? 'model' : 'user';
       const parts: Array<Record<string, unknown>> = [];
+
+      // Handle tool calls in assistant messages
+      if (msg.toolCalls && msg.toolCalls.length > 0) {
+        for (const tc of msg.toolCalls) {
+          parts.push({
+            functionCall: {
+              name: tc.name,
+              args: tc.args,
+            },
+          });
+        }
+      }
 
       // Add attachments (images, PDFs, text) if present
       if (msg.attachments && msg.attachments.length > 0) {
         for (const att of msg.attachments) {
           if (att.base64Data) {
             // Clean base64 prefix if present
-            const cleanBase64 = att.base64Data.includes(',')
-              ? att.base64Data.split(',')[1]
-              : att.base64Data;
+            const cleanBase64 = att.base64Data.includes(',') ? att.base64Data.split(',')[1] : att.base64Data;
 
             parts.push({
               inlineData: {
@@ -169,8 +195,29 @@ export class GeminiAdapter implements ProviderAdapter {
       config.temperature = options.temperature;
     }
 
+    const tools: any[] = [];
     if (options.webSearch) {
-      config.tools = [{ googleSearch: {} }];
+      tools.push({ googleSearch: {} });
+    }
+    if (options.tools && options.tools.length > 0) {
+      tools.push({
+        functionDeclarations: options.tools.map((t: any) => ({
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        })),
+      });
+    }
+
+    if (tools.length > 0) {
+      config.tools = tools;
+      if (options.toolChoice) {
+        config.toolConfig = {
+          functionCallingConfig: {
+            mode: typeof options.toolChoice === 'string' ? options.toolChoice.toUpperCase() : 'ANY',
+          },
+        };
+      }
     }
 
     try {
@@ -189,6 +236,20 @@ export class GeminiAdapter implements ProviderAdapter {
         const text = chunk.text;
         if (text) {
           yield { type: 'delta', text };
+        }
+
+        const calls = chunk.functionCalls;
+        if (calls && Array.isArray(calls)) {
+          for (const call of calls) {
+            yield {
+              type: 'tool_call',
+              toolCall: {
+                id: Math.random().toString(36).substring(7), // SDK doesn't always provide tool call IDs
+                name: call.name || 'unknown',
+                args: (call.args as Record<string, unknown>) || {},
+              },
+            };
+          }
         }
       }
 
@@ -259,12 +320,55 @@ export class OpenAIAdapter implements ProviderAdapter {
       throw new Error(this.getMissingConfigHelp());
     }
 
-    const messages = [];
+    const messages: any[] = [];
     if (options.systemInstruction) {
       messages.push({ role: 'system', content: options.systemInstruction });
     }
     for (const msg of options.messages) {
-      messages.push({ role: msg.role, content: msg.content });
+      if (msg.role === 'tool' && msg.toolResults) {
+        for (const res of msg.toolResults) {
+          messages.push({
+            role: 'tool',
+            tool_call_id: res.toolCallId,
+            content: typeof res.result === 'string' ? res.result : JSON.stringify(res.result),
+          });
+        }
+        continue;
+      }
+
+      const formatted: any = { role: msg.role, content: msg.content || '' };
+      if (msg.toolCalls && msg.toolCalls.length > 0) {
+        formatted.tool_calls = msg.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: 'function',
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.args),
+          },
+        }));
+      }
+      messages.push(formatted);
+    }
+
+    const body: any = {
+      model: options.modelId,
+      messages,
+      temperature: options.temperature ?? 0.7,
+      stream: true,
+    };
+
+    if (options.tools && options.tools.length > 0) {
+      body.tools = options.tools.map((t: any) => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        },
+      }));
+      if (options.toolChoice) {
+        body.tool_choice = options.toolChoice;
+      }
     }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -273,12 +377,7 @@ export class OpenAIAdapter implements ProviderAdapter {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: options.modelId,
-        messages,
-        temperature: options.temperature ?? 0.7,
-        stream: true,
-      }),
+      body: JSON.stringify(body),
       signal: options.signal,
     });
 
@@ -294,6 +393,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    const toolCallMap = new Map<string, { id: string; name: string; args: string }>();
 
     while (true) {
       const { done, value } = await reader.read();
@@ -308,18 +408,59 @@ export class OpenAIAdapter implements ProviderAdapter {
         if (!trimmed || !trimmed.startsWith('data: ')) continue;
         const dataStr = trimmed.slice(6);
         if (dataStr === '[DONE]') {
+          for (const tc of toolCallMap.values()) {
+            if (!tc.name) continue;
+            try {
+              yield {
+                type: 'tool_call',
+                toolCall: { id: tc.id, name: tc.name, args: JSON.parse(tc.args || '{}') },
+              };
+            } catch { /* ignore */ }
+          }
           yield { type: 'finish', finishReason: 'stop' };
           return;
         }
 
         try {
           const json = JSON.parse(dataStr);
-          const delta = json.choices?.[0]?.delta?.content;
+          const choice = json.choices?.[0];
+          const delta = choice?.delta?.content;
+          const toolCalls = choice?.delta?.tool_calls;
+          const finishReason = choice?.finish_reason;
+
           if (delta) {
             yield { type: 'delta', text: delta };
           }
+
+          if (toolCalls && Array.isArray(toolCalls)) {
+            for (const tc of toolCalls) {
+              const id = tc.id || `tc-${tc.index || 0}`;
+              if (!toolCallMap.has(id)) {
+                toolCallMap.set(id, { id, name: '', args: '' });
+              }
+              const existing = toolCallMap.get(id)!;
+              if (tc.function?.name) existing.name += tc.function.name;
+              if (tc.function?.arguments) existing.args += tc.function.arguments;
+            }
+          }
+
+          if (finishReason === 'tool_calls') {
+            for (const tc of toolCallMap.values()) {
+              if (!tc.name) continue;
+              try {
+                yield {
+                  type: 'tool_call',
+                  toolCall: { id: tc.id, name: tc.name, args: JSON.parse(tc.args || '{}') },
+                };
+              } catch { /* wait */ }
+            }
+            toolCallMap.clear();
+            yield { type: 'finish', finishReason };
+          } else if (finishReason) {
+            yield { type: 'finish', finishReason };
+          }
         } catch {
-          // ignore partial parse error
+          // ignore
         }
       }
     }
@@ -604,13 +745,57 @@ export class OpenRouterFreeAdapter implements ProviderAdapter {
       throw new Error(this.getMissingConfigHelp());
     }
 
-    const messages: Array<{ role: string; content: string }> = [];
+    const messages: any[] = [];
     if (options.systemInstruction) {
       messages.push({ role: 'system', content: options.systemInstruction });
     }
     for (const msg of options.messages) {
       if (msg.role === 'system') continue;
-      messages.push({ role: msg.role, content: msg.content });
+
+      if (msg.role === 'tool' && msg.toolResults) {
+        for (const res of msg.toolResults) {
+          messages.push({
+            role: 'tool',
+            tool_call_id: res.toolCallId,
+            content: typeof res.result === 'string' ? res.result : JSON.stringify(res.result),
+          });
+        }
+        continue;
+      }
+
+      const formatted: any = { role: msg.role, content: msg.content || '' };
+      if (msg.toolCalls && msg.toolCalls.length > 0) {
+        formatted.tool_calls = msg.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: 'function',
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.args),
+          },
+        }));
+      }
+      messages.push(formatted);
+    }
+
+    const body: any = {
+      model: options.modelId || 'openrouter/free',
+      messages,
+      temperature: options.temperature ?? 0.7,
+      stream: true,
+    };
+
+    if (options.tools && options.tools.length > 0) {
+      body.tools = options.tools.map((t: any) => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        },
+      }));
+      if (options.toolChoice) {
+        body.tool_choice = options.toolChoice;
+      }
     }
 
     let response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -621,12 +806,7 @@ export class OpenRouterFreeAdapter implements ProviderAdapter {
         'HTTP-Referer': process.env.APP_URL || 'https://aether-ai.local',
         'X-Title': 'Aether AI Assistant',
       },
-      body: JSON.stringify({
-        model: options.modelId || 'openrouter/free',
-        messages,
-        temperature: options.temperature ?? 0.7,
-        stream: true,
-      }),
+      body: JSON.stringify(body),
       signal: options.signal,
     });
 
@@ -679,6 +859,7 @@ export class OpenRouterFreeAdapter implements ProviderAdapter {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    const toolCallMap = new Map<string, { id: string; name: string; args: string }>();
 
     while (true) {
       const { done, value } = await reader.read();
@@ -693,20 +874,67 @@ export class OpenRouterFreeAdapter implements ProviderAdapter {
         if (!trimmed || !trimmed.startsWith('data: ')) continue;
         const dataStr = trimmed.slice(6);
         if (dataStr === '[DONE]') {
+          // Yield final collected tool calls
+          for (const tc of toolCallMap.values()) {
+            if (!tc.name) continue;
+            try {
+              yield {
+                type: 'tool_call',
+                toolCall: { id: tc.id, name: tc.name, args: JSON.parse(tc.args || '{}') },
+              };
+            } catch { /* ignore incomplete final parse */ }
+          }
           yield { type: 'finish', finishReason: 'stop' };
           return;
         }
 
         try {
           const json = JSON.parse(dataStr);
-          const delta = json.choices?.[0]?.delta?.content;
-          const reasoning = json.choices?.[0]?.delta?.reasoning;
+          const choice = json.choices?.[0];
+          const delta = choice?.delta?.content;
+          const reasoning = choice?.delta?.reasoning;
+          const toolCalls = choice?.delta?.tool_calls;
+          const finishReason = choice?.finish_reason;
 
           if (reasoning) {
             yield { type: 'reasoning', text: reasoning };
           }
           if (delta) {
             yield { type: 'delta', text: delta };
+          }
+
+          if (toolCalls && Array.isArray(toolCalls)) {
+            for (const tc of toolCalls) {
+              const index = tc.index || 0;
+              const id = tc.id || `tc-${index}`;
+              
+              if (!toolCallMap.has(id)) {
+                toolCallMap.set(id, { id, name: '', args: '' });
+              }
+              
+              const existing = toolCallMap.get(id)!;
+              if (tc.function?.name) existing.name += tc.function.name;
+              if (tc.function?.arguments) existing.args += tc.function.arguments;
+
+              // Optional: yield partial tool calls if name and args look somewhat complete
+              // But for now, we'll wait for the finish_reason or end of stream
+            }
+          }
+
+          if (finishReason === 'tool_calls') {
+             for (const tc of toolCallMap.values()) {
+                if (!tc.name) continue;
+                try {
+                  yield {
+                    type: 'tool_call',
+                    toolCall: { id: tc.id, name: tc.name, args: JSON.parse(tc.args || '{}') },
+                  };
+                } catch { /* wait for more data */ }
+             }
+             toolCallMap.clear(); // Clear so we don't yield them twice
+             yield { type: 'finish', finishReason };
+          } else if (finishReason) {
+            yield { type: 'finish', finishReason };
           }
         } catch {
           // ignore partial json line

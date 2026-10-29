@@ -3,8 +3,7 @@
  * Full interactive terminal window supporting shell commands executed in E2B secure sandbox
  * Features:
  * - Command prompt input with history (Up/Down arrows)
- * - Quick shortcuts (npm run build, npm run lint, git status, python3, etc.)
- * - ANSI / text output streaming
+ * - ANSI / text output streaming (stdout & stderr handled correctly based on exitCode)
  * - Fullscreen & minimize controls
  */
 
@@ -15,8 +14,6 @@ import {
   Maximize2,
   Minimize2,
   Trash2,
-  Play,
-  Check,
   RefreshCw,
   CornerDownLeft,
 } from 'lucide-react';
@@ -101,9 +98,11 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({ isOpen, onClose })
         });
       }
       if (res.stderr) {
+        // If exitCode is 0, stderr is informational (like python -v or npm warnings) -> treat as output
+        const logType = res.exitCode === 0 ? 'output' : 'error';
         outLogs.push({
           id: Math.random().toString(),
-          type: 'error',
+          type: logType,
           text: res.stderr,
           timestamp: new Date().toLocaleTimeString(),
         });
@@ -159,10 +158,10 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({ isOpen, onClose })
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-3 md:p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-2 md:p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         className={`w-full bg-[#181818] border border-[#3c3c3c] rounded-2xl shadow-2xl flex flex-col overflow-hidden font-mono transition-all duration-200 ${
-          isFullscreen ? 'h-full max-w-none rounded-none' : 'max-w-5xl h-[88vh] sm:h-[82vh]'
+          isFullscreen ? 'h-full max-w-none rounded-none' : 'max-w-6xl h-[90vh] sm:h-[94vh]'
         }`}
       >
         {/* Top Window Bar */}
@@ -204,43 +203,8 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({ isOpen, onClose })
           </div>
         </div>
 
-        {/* Quick Commands Ribbon */}
-        <div className="h-8 bg-[#1f1f1f] px-4 border-b border-[#2d2d2d] flex items-center space-x-2 text-[11px] overflow-x-auto no-scrollbar select-none">
-          <span className="text-[#666] uppercase text-[10px]">Raccourcis :</span>
-          <button
-            onClick={() => handleRunCommand('npm run build')}
-            className="px-2 py-0.5 rounded bg-[#2a2a2a] hover:bg-[#383838] text-cyan-300 hover:text-white transition-colors"
-          >
-            npm run build
-          </button>
-          <button
-            onClick={() => handleRunCommand('npm run lint')}
-            className="px-2 py-0.5 rounded bg-[#2a2a2a] hover:bg-[#383838] text-purple-300 hover:text-white transition-colors"
-          >
-            npm run lint
-          </button>
-          <button
-            onClick={() => handleRunCommand('git status')}
-            className="px-2 py-0.5 rounded bg-[#2a2a2a] hover:bg-[#383838] text-emerald-300 hover:text-white transition-colors"
-          >
-            git status
-          </button>
-          <button
-            onClick={() => handleRunCommand('python3 --version')}
-            className="px-2 py-0.5 rounded bg-[#2a2a2a] hover:bg-[#383838] text-amber-300 hover:text-white transition-colors"
-          >
-            python3 --version
-          </button>
-          <button
-            onClick={() => handleRunCommand('ls -la')}
-            className="px-2 py-0.5 rounded bg-[#2a2a2a] hover:bg-[#383838] text-blue-300 hover:text-white transition-colors"
-          >
-            ls -la
-          </button>
-        </div>
-
         {/* Terminal Body */}
-        <div className="flex-1 bg-[#121212] p-4 overflow-y-auto font-mono text-xs md:text-sm space-y-2 select-text">
+        <div className="flex-1 bg-[#121212] p-3 sm:p-4 overflow-y-auto font-mono text-xs md:text-sm space-y-2 select-text">
           {logs.map((log) => (
             <div key={log.id} className="leading-relaxed">
               {log.type === 'input' && (
@@ -278,7 +242,7 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({ isOpen, onClose })
         </div>
 
         {/* Command Prompt Input Bar */}
-        <div className="h-14 bg-[#1a1a1a] px-4 border-t border-[#333] flex items-center space-x-2">
+        <div className="h-14 bg-[#1a1a1a] px-3 sm:px-4 border-t border-[#333] flex items-center space-x-2 shrink-0">
           <span className="text-emerald-400 font-bold text-sm select-none">$</span>
           <input
             ref={inputRef}
@@ -286,14 +250,14 @@ export const TerminalModal: React.FC<TerminalModalProps> = ({ isOpen, onClose })
             value={inputCommand}
             onChange={(e) => setInputCommand(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Tapez une commande shell (ex: npm run build, ls, node)..."
+            placeholder="Tapez une commande (ex: npm run build, ls)..."
             disabled={isRunning}
             className="flex-1 bg-transparent text-white font-mono placeholder-[#666] outline-none text-xs md:text-sm"
           />
           <button
             onClick={() => handleRunCommand()}
             disabled={isRunning || !inputCommand.trim()}
-            className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-[#333] disabled:text-[#666] text-white text-xs font-semibold flex items-center space-x-1.5 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-[#333] disabled:text-[#666] text-white text-xs font-semibold flex items-center space-x-1 transition-colors shrink-0"
           >
             <span>Exécuter</span>
             <CornerDownLeft className="w-3.5 h-3.5" />
