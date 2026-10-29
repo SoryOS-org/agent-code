@@ -30,6 +30,7 @@ interface ChatInputProps {
   onStopGeneration: () => void;
   isGenerating: boolean;
   disabled?: boolean;
+  onOpenVoiceMode: () => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({
@@ -37,6 +38,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onStopGeneration,
   isGenerating,
   disabled,
+  onOpenVoiceMode,
 }) => {
   const [content, setContent] = useState('');
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
@@ -344,7 +346,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               /* Blue Voice Mode button (matching ChatGPT mobile app screenshot!) */
               <button
                 type="button"
-                onClick={toggleVoiceInput}
+                onClick={onOpenVoiceMode}
                 title="Mode vocal"
                 className="w-9 h-9 rounded-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white flex items-center justify-center shadow-sm transition-all active:scale-95"
               >

@@ -1,0 +1,9 @@
+{
+  "name": "@packages/agent-tools",
+  "version": "1.0.0",
+  "description": "OpenCode-inspired Workspace & Agent Tools (Shell, Read, Write, Grep, Glob)",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "type": "module",
+  "private": true
+}

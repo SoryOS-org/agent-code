@@ -9,6 +9,7 @@ import { modelsRouter } from './routes/models.ts';
 import { usersRouter } from './routes/users.ts';
 import { filesRouter } from './routes/files.ts';
 import { conversationsRouter } from './routes/conversations.ts';
+import { codeRouter } from './routes/code.ts';
 
 export function createApiApp() {
   const app = express();
@@ -34,6 +35,7 @@ export function createApiApp() {
     app.use(prefix, usersRouter);
     app.use(prefix, filesRouter);
     app.use(prefix, conversationsRouter);
+    app.use(prefix, codeRouter);
   };
 
   registerRoutes('/v1');

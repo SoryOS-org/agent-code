@@ -18,6 +18,14 @@ import {
   type ProviderStreamChunk,
 } from '@packages/provider-adapters/src/index.ts';
 import { createWebSearchTools } from '@packages/web-search/src/index.ts';
+import { createE2BAgentTools } from '@packages/opencode-e2b/src/e2b-agent-tools.ts';
+import { createAgentTools } from '@packages/agent-tools/src/index.ts';
+import {
+  extractXmlToolCalls,
+  executeXmlToolCalls,
+  cleanXmlToolCallsFromText,
+} from '@packages/opencode-e2b/src/tool-call-parser.ts';
+import { TaskManager } from '@packages/task-manager/src/index.ts';
 import type { WebSearchResponse } from '@packages/web-search/src/types/index.ts';
 
 export interface ToolDefinition {
@@ -187,6 +195,18 @@ export class ToolRegistry {
     for (const tool of webTools) {
       this.register(tool);
     }
+
+    // Register Full E2B Agent Tools (Code execution, write file, run command)
+    const e2bTools = createE2BAgentTools();
+    for (const tool of e2bTools) {
+      this.register(tool);
+    }
+
+    // Register OpenCode Modular Workspace Agent Tools (shell, read, write, grep)
+    const agentTools = createAgentTools();
+    for (const tool of agentTools) {
+      this.register(tool);
+    }
   }
 }
 
@@ -197,15 +217,22 @@ export class ConversationEngine {
   private providerRegistry: ProviderRegistry;
   private contextManager: ContextManager;
   private toolRegistry: ToolRegistry;
+  private taskManager: TaskManager;
 
   constructor(
     providerRegistry = new ProviderRegistry(),
     contextManager = new ContextManager(),
-    toolRegistry = new ToolRegistry()
+    toolRegistry = new ToolRegistry(),
+    taskManager = new TaskManager()
   ) {
     this.providerRegistry = providerRegistry;
     this.contextManager = contextManager;
     this.toolRegistry = toolRegistry;
+    this.taskManager = taskManager;
+  }
+
+  getTaskManager(): TaskManager {
+    return this.taskManager;
   }
 
   getProviderRegistry(): ProviderRegistry {
@@ -275,7 +302,18 @@ export class ConversationEngine {
       createdAt: new Date().toISOString(),
     };
 
-    let effectiveSystemPrompt = options.systemPrompt || '';
+    const e2bCapabilitiesInstruction = `\n\n[CAPACITÉS ACTIVES D'AGENT DÉVELOPPEUR FULL AUTONOME : OPENCODE / CODEX / REPLIT STYLE]
+Tu es Aether AI, un agent développeur autonome connecté directement à un environnement d'exécution complet E2B Cloud Sandbox.
+Tes capacités d'agent incluent :
+1. Exécution de code en direct (Python, JavaScript, TypeScript) via 'e2b_code_interpreter'.
+2. Création et modification de fichiers (code source, scripts, README, config) via 'e2b_write_file'.
+3. Exécution de commandes terminal shell (pip install, npm install, git, bash, scripts) via 'e2b_run_command'.
+4. Recherche Web en direct avec sources cliquables.
+
+Si l'utilisateur te demande si tu es capable d'exécuter, créer, modifier du code ou de gérer un projet comme OpenCode, Codex ou Replit : Réponds OUI avec enthousiasme et assurance, puis exécute ou génère le code/fichier immédiatement !
+---------------------------------------------------------------------------------------------------\n`;
+
+    let effectiveSystemPrompt = (options.systemPrompt || '') + e2bCapabilitiesInstruction;
 
     // Auto-detect web search intent if not explicitly enabled
     let effectiveWebSearch = options.webSearch;
@@ -347,6 +385,48 @@ export class ConversationEngine {
       }
     }
 
+    // Auto-detect code execution intent if user prompt contains code blocks or run requests
+    const lowerPromptForCode = options.prompt.toLowerCase();
+    if (
+      lowerPromptForCode.includes('exécute') ||
+      lowerPromptForCode.includes('execute') ||
+      lowerPromptForCode.includes('lance') ||
+      lowerPromptForCode.includes('run') ||
+      options.prompt.includes('```')
+    ) {
+      const codeMatch = options.prompt.match(/```([a-zA-Z]*)\n([\s\S]*?)```/);
+      if (codeMatch) {
+        const langRaw = codeMatch[1].toLowerCase();
+        const codeToRun = codeMatch[2];
+        const language = langRaw.includes('py') ? 'python' : 'javascript';
+
+        const codeTool = this.toolRegistry.get('e2b_code_interpreter');
+        if (codeTool) {
+          const callId = `tool_code_${Date.now()}`;
+          options.onEvent({
+            event: 'tool_call',
+            data: {
+              toolCall: {
+                id: callId,
+                name: 'e2b_code_interpreter',
+                args: { language, code: codeToRun },
+              },
+            },
+          });
+
+          try {
+            const execResult = (await codeTool.execute({ language, code: codeToRun })) as any;
+            if (execResult) {
+              const execContext = `\n\n--- RÉSULTAT DE L'EXÉCUTION DU CODE (E2B Sandbox / Secure Runtime) ---\nEnvironnement: ${execResult.environment}\nCode de sortie: ${execResult.exitCode}\nTemps d'exécution: ${execResult.executionTimeMs}ms\n\nSTDOUT :\n\`\`\`\n${execResult.stdout || '(vide)'}\n\`\`\`\n\nSTDERR :\n\`\`\`\n${execResult.stderr || '(aucune)'}\n\`\`\`\n-------------------------------------------------------------`;
+              effectiveSystemPrompt += execContext;
+            }
+          } catch (execErr) {
+            console.warn('[ConversationEngine] Code execution error:', execErr);
+          }
+        }
+      }
+    }
+
     const fullHistory = [...options.history, newUserMessage];
     const preparedMessages = this.contextManager.prepareContext(
       fullHistory,
@@ -401,6 +481,28 @@ export class ConversationEngine {
           });
         } else if (chunk.type === 'finish') {
           if (chunk.finishReason) finishReason = chunk.finishReason;
+        }
+      }
+
+      // Process XML tool calls if emitted in text by models (e.g. OpenRouter free LLMs)
+      if (fullText.includes('<tool_call>')) {
+        const xmlCalls = extractXmlToolCalls(fullText);
+        if (xmlCalls.length > 0) {
+          const executed = await executeXmlToolCalls(xmlCalls);
+          const cleanedText = cleanXmlToolCallsFromText(fullText);
+
+          let toolResultsSummary = '\n\n### ⚡ Action(s) E2B Exécutée(s) :\n';
+          for (const item of executed) {
+            if (item.toolName === 'e2b_write_file') {
+              toolResultsSummary += `- **Fichier créé dans la Sandbox E2B** : \`${item.result.path}\` (${item.result.message})\n`;
+            } else if (item.toolName === 'e2b_run_command') {
+              toolResultsSummary += `\n**Commande E2B** : \`${item.result.command || 'bash'}\` (Code ${item.result.exitCode})\n\`\`\`\n${item.result.stdout || item.result.stderr || '(succès)'}\n\`\`\`\n`;
+            } else if (item.toolName === 'e2b_code_interpreter') {
+              toolResultsSummary += `\n--- RÉSULTAT DE L'EXÉCUTION DU CODE (E2B Sandbox / Secure Runtime) ---\nEnvironnement: ${item.result.environment}\nCode de sortie: ${item.result.exitCode}\nTemps d'exécution: ${item.result.executionTimeMs}ms\n\nSTDOUT :\n\`\`\`\n${item.result.stdout || '(vide)'}\n\`\`\`\n\nSTDERR :\n\`\`\`\n${item.result.stderr || '(aucune)'}\n\`\`\`\n-------------------------------------------------------------\n`;
+            }
+          }
+
+          fullText = cleanedText + toolResultsSummary;
         }
       }
 

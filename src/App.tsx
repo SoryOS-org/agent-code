@@ -18,6 +18,8 @@ import { ChatInput } from './components/ChatInput.tsx';
 import { WelcomeScreen } from './components/WelcomeScreen.tsx';
 import { SettingsModal } from './components/SettingsModal.tsx';
 import { DiagramAssistantModal } from './components/DiagramAssistantModal.tsx';
+import { VoiceModeModal } from './components/VoiceModeModal.tsx';
+import { TaskToolsPanel, TaskItem } from './components/TaskToolsPanel.tsx';
 import { AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
@@ -40,7 +42,12 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [diagramModalOpen, setDiagramModalOpen] = useState(false);
+  const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [errorToast, setErrorToast] = useState<{ message: string; hint?: string } | null>(null);
+
+  // OpenCode Agent Task State
+  const [agentTasks, setAgentTasks] = useState<TaskItem[]>([]);
+  const [activeE2BTool, setActiveE2BTool] = useState<string | undefined>(undefined);
 
   const activeStreamAbortRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -310,7 +317,25 @@ export default function App() {
             setStreamingMessage((prev) =>
               prev ? { ...prev, content: accumulatedContent } : null
             );
+          } else if (event.event === 'tool_call') {
+            const toolCall = (event.data as any).toolCall;
+            if (toolCall?.name) {
+              setActiveE2BTool(toolCall.name);
+              setAgentTasks((prev) => [
+                ...prev,
+                {
+                  id: `task_${Date.now()}_${prev.length}`,
+                  title: `Exécution E2B : ${toolCall.name}`,
+                  status: 'in_progress',
+                  toolName: toolCall.name,
+                },
+              ]);
+            }
           } else if (event.event === 'message_complete') {
+            setActiveE2BTool(undefined);
+            setAgentTasks((prev) =>
+              prev.map((t) => (t.status === 'in_progress' ? { ...t, status: 'completed' } : t))
+            );
             const data = event.data as any;
             const finalizedMsg: Message = {
               id: assistantMsgId,
@@ -485,8 +510,16 @@ export default function App() {
           onSendMessage={handleSendMessage}
           onStopGeneration={handleStopGeneration}
           isGenerating={isGenerating}
+          onOpenVoiceMode={() => setVoiceModeOpen(true)}
         />
       </main>
+
+      {/* OpenCode Task Tools Panel */}
+      <TaskToolsPanel
+        tasks={agentTasks}
+        activeTool={activeE2BTool}
+        onClearTasks={() => setAgentTasks([])}
+      />
 
       {/* Settings Modal */}
       <SettingsModal
@@ -505,6 +538,13 @@ export default function App() {
         isOpen={diagramModalOpen}
         onClose={() => setDiagramModalOpen(false)}
         onSelectPrompt={(prompt) => handleSendMessage(prompt, [], false)}
+      />
+
+      {/* ChatGPT-styled Voice Mode Modal */}
+      <VoiceModeModal
+        isOpen={voiceModeOpen}
+        onClose={() => setVoiceModeOpen(false)}
+        onSendMessageVoice={(text) => handleSendMessage(text, [], false)}
       />
     </div>
   );

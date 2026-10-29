@@ -5,8 +5,12 @@
  */
 
 import React, { useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, Play, Loader2 } from 'lucide-react';
 import { MermaidBlock } from './MermaidBlock.tsx';
+import { CodeExecutionTerminal } from './CodeExecutionTerminal.tsx';
+import { TerminalView } from './TerminalView.tsx';
+import { parseE2BExecutionBlock } from '../utils/e2bParser.ts';
+import { api } from '../api/client.ts';
 
 interface MarkdownRendererProps {
   content: string;
@@ -14,7 +18,8 @@ interface MarkdownRendererProps {
 }
 
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isStreaming }) => {
-  const blocks = parseBlocks(content);
+  const cleanedContent = content.replace(/<tool_call>[\s\S]*?(?:<\/tool_call>|$)/g, '').trim();
+  const blocks = parseBlocks(cleanedContent || content);
 
   return (
     <div className="max-w-none text-[#ececec] text-[15px] leading-relaxed space-y-3 break-words">
@@ -91,6 +96,17 @@ function parseBlocks(markdown: string): Block[] {
 
 const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, code }) => {
   const [copied, setCopied] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionOutput, setExecutionOutput] = useState<{
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+    environment: string;
+    executionTimeMs?: number;
+  } | null>(null);
+
+  const cleanLang = (language || 'text').toLowerCase().trim();
+  const isRunnable = ['python', 'py', 'javascript', 'js', 'typescript', 'ts', 'node', 'bash', 'sh', 'shell', 'rust', 'rs'].includes(cleanLang);
 
   const handleCopy = async () => {
     try {
@@ -102,6 +118,49 @@ const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, cod
     }
   };
 
+  const handleExecuteE2B = () => {
+    if (isExecuting) return;
+    setIsExecuting(true);
+    setExecutionOutput(null);
+
+    const mappedLang = cleanLang.includes('py')
+      ? 'python'
+      : cleanLang.includes('rust') || cleanLang === 'rs'
+      ? 'rust'
+      : cleanLang.includes('bash') || cleanLang.includes('sh') || cleanLang === 'shell'
+      ? 'bash'
+      : 'javascript';
+
+    api.executeCode(
+      { language: mappedLang, code },
+      {
+        onEvent: (event) => {
+          if (event.event === 'code_output') {
+            setExecutionOutput({
+              stdout: event.data.stdout || '',
+              stderr: event.data.stderr || '',
+              exitCode: event.data.exitCode ?? 0,
+              environment: event.data.environment || 'E2B Cloud Secure Sandbox',
+              executionTimeMs: event.data.executionTimeMs,
+            });
+          }
+        },
+        onError: (err) => {
+          setExecutionOutput({
+            stdout: '',
+            stderr: `Erreur d'exécution : ${err.message}`,
+            exitCode: 1,
+            environment: 'E2B Cloud Secure Sandbox',
+          });
+          setIsExecuting(false);
+        },
+        onComplete: () => {
+          setIsExecuting(false);
+        },
+      }
+    );
+  };
+
   const lines = code.split('\n');
 
   return (
@@ -111,23 +170,49 @@ const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, cod
         <span className="font-mono text-xs text-[#ececec] font-medium lowercase">
           {language}
         </span>
-        <button
-          onClick={handleCopy}
-          aria-label="Copier le code"
-          className="flex items-center space-x-1.5 py-1 px-2 rounded-lg hover:bg-[#2f2f2f] text-[#b4b4b4] hover:text-white transition-colors text-xs"
-        >
-          {copied ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-emerald-400 font-medium">Copié !</span>
-            </>
-          ) : (
-            <>
-              <Copy className="w-3.5 h-3.5" />
-              <span>Copier le code</span>
-            </>
+
+        <div className="flex items-center space-x-2">
+          {/* Run in E2B Sandbox Button */}
+          {isRunnable && (
+            <button
+              onClick={handleExecuteE2B}
+              disabled={isExecuting}
+              title="Exécuter ce code dans E2B Cloud Sandbox"
+              className="flex items-center space-x-1.5 py-1 px-2.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 text-emerald-300 font-medium transition-all active:scale-95 text-xs shadow-xs disabled:opacity-50"
+            >
+              {isExecuting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                  <span>Exécution...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400/30" />
+                  <span>Exécuter dans E2B</span>
+                </>
+              )}
+            </button>
           )}
-        </button>
+
+          {/* Copy Button */}
+          <button
+            onClick={handleCopy}
+            aria-label="Copier le code"
+            className="flex items-center space-x-1.5 py-1 px-2 rounded-lg hover:bg-[#2f2f2f] text-[#b4b4b4] hover:text-white transition-colors text-xs"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400 font-medium">Copié !</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copier le code</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Code Content */}
@@ -142,6 +227,20 @@ const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, cod
           </code>
         </pre>
       </div>
+
+      {/* Embedded Live Terminal Output */}
+      {executionOutput && (
+        <div className="border-t border-[#2f2f2f] p-2 bg-[#080808]">
+          <TerminalView
+            environment={executionOutput.environment}
+            exitCode={executionOutput.exitCode}
+            executionTimeMs={executionOutput.executionTimeMs}
+            stdout={executionOutput.stdout}
+            stderr={executionOutput.stderr}
+            onClose={() => setExecutionOutput(null)}
+          />
+        </div>
+      )}
     </div>
   );
 };
@@ -194,6 +293,21 @@ const TextBlock: React.FC<{ text: string }> = ({ text }) => {
       {paragraphs.map((p, idx) => {
         const trimmed = p.trim();
         if (!trimmed) return null;
+
+        // E2B Sandbox Code Execution Terminal Block
+        const e2bParsed = parseE2BExecutionBlock(trimmed);
+        if (e2bParsed) {
+          return (
+            <TerminalView
+              key={idx}
+              environment={e2bParsed.environment}
+              exitCode={e2bParsed.exitCode}
+              executionTimeMs={e2bParsed.executionTimeMs}
+              stdout={e2bParsed.stdout}
+              stderr={e2bParsed.stderr}
+            />
+          );
+        }
 
         // Horizontal separator rule
         if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {

@@ -206,4 +206,96 @@ export const api = {
       controller.abort();
     };
   },
+
+  /**
+   * Execute code via E2B Cloud Sandbox with SSE streaming output
+   */
+  executeCode: (
+    payload: { language: 'python' | 'javascript' | 'typescript' | 'bash' | 'sh' | 'rust' | 'rs' | 'shell'; code: string },
+    callbacks: {
+      onEvent: (event: { event: 'code_start' | 'code_output' | 'code_complete' | 'error'; data: any }) => void;
+      onError: (err: ApiError) => void;
+      onComplete: () => void;
+    },
+    signal?: AbortSignal
+  ): () => void => {
+    let isAborted = false;
+    const controller = new AbortController();
+    const activeSignal = signal || controller.signal;
+
+    (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/code/execute`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: activeSignal,
+        });
+
+        if (!response.ok) {
+          const errJson = await response.json().catch(() => ({}));
+          throw new ApiError(errJson?.error?.message || errJson?.error || 'Échec de la connexion à E2B');
+        }
+
+        if (!response.body) {
+          throw new ApiError('Flux SSE E2B indisponible');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (!isAborted) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const messages = buffer.split('\n\n');
+          buffer = messages.pop() || '';
+
+          for (const rawMessage of messages) {
+            const lines = rawMessage.split('\n');
+            let eventType = 'code_output';
+            let dataStr = '';
+
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                eventType = line.slice(7).trim();
+              } else if (line.startsWith('data: ')) {
+                dataStr = line.slice(6).trim();
+              }
+            }
+
+            if (dataStr) {
+              try {
+                const parsedData = JSON.parse(dataStr);
+                callbacks.onEvent({
+                  event: eventType as any,
+                  data: parsedData,
+                });
+              } catch {
+                // ignore partial json
+              }
+            }
+          }
+        }
+
+        callbacks.onComplete();
+      } catch (err: unknown) {
+        if (activeSignal.aborted) {
+          callbacks.onComplete();
+          return;
+        }
+        const message = err instanceof Error ? err.message : 'Erreur réseau E2B';
+        callbacks.onError(new ApiError(message));
+      }
+    })();
+
+    return () => {
+      isAborted = true;
+      controller.abort();
+    };
+  },
 };

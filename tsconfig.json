@@ -27,5 +27,24 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["dist"]
+  "exclude": [
+    "dist",
+    "packages/opencode-e2b/test",
+    "packages/opencode-e2b/src/bootstrap.ts",
+    "packages/opencode-e2b/src/workspace.ts",
+    "packages/opencode-e2b/src/sandbox-store.ts",
+    "packages/opencode-e2b/src/gc.ts",
+    "packages/opencode-e2b/src/runtime.ts",
+    "packages/opencode-e2b/src/template.ts",
+    "packages/opencode-e2b/src/upload.ts",
+    "packages/opencode-e2b/src/workspace-create.ts",
+    "packages/opencode-e2b/src/e2b.ts",
+    "packages/opencode-e2b/src/config.ts",
+    "packages/opencode-e2b/src/config-validate.ts",
+    "packages/opencode-e2b/src/e2b-sdk.ts",
+    "packages/opencode-e2b/src/types.ts",
+    "packages/opencode-e2b/src/shared.ts",
+    "packages/opencode-e2b/src/local-git.ts",
+    "packages/opencode-e2b/src/index.ts"
+  ]
 }
