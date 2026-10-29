@@ -10,6 +10,7 @@ import { usersRouter } from './routes/users.ts';
 import { filesRouter } from './routes/files.ts';
 import { conversationsRouter } from './routes/conversations.ts';
 import { codeRouter } from './routes/code.ts';
+import { websearchRouter } from './routes/websearch.ts';
 
 export function createApiApp() {
   const app = express();
@@ -36,6 +37,7 @@ export function createApiApp() {
     app.use(prefix, filesRouter);
     app.use(prefix, conversationsRouter);
     app.use(prefix, codeRouter);
+    app.use(prefix, websearchRouter);
   };
 
   registerRoutes('/v1');

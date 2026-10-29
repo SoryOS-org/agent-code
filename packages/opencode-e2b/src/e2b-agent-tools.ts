@@ -39,18 +39,48 @@ export async function writeE2BFile(path: string, content: string): Promise<{ suc
 export async function runE2BCommand(command: string): Promise<{ stdout: string; stderr: string; exitCode: number; executionTimeMs: number }> {
   const startTime = Date.now();
   const apiKey = process.env.E2B_API_KEY || 'e2b_36dc65b1815ea00af20407c9ba6f42d8c5f6487e';
+  let sandbox: Sandbox | null = null;
   try {
-    const sandbox = await Sandbox.create({ apiKey });
-    const res = await sandbox.commands.run(command);
-    await sandbox.kill();
+    sandbox = await Sandbox.create({ apiKey });
+    let stdout = '';
+    let stderr = '';
+    let exitCode = 0;
+
+    try {
+      const res = await sandbox.commands.run(command);
+      stdout = res.stdout || '';
+      stderr = res.stderr || '';
+      exitCode = res.exitCode ?? 0;
+    } catch (cmdErr: any) {
+      if (cmdErr && typeof cmdErr === 'object' && ('exitCode' in cmdErr || 'stdout' in cmdErr || 'stderr' in cmdErr)) {
+        stdout = cmdErr.stdout || '';
+        stderr = cmdErr.stderr || cmdErr.message || '';
+        exitCode = typeof cmdErr.exitCode === 'number' ? cmdErr.exitCode : 1;
+      } else {
+        throw cmdErr;
+      }
+    }
+
+    try {
+      await sandbox.kill();
+    } catch {
+      // ignore
+    }
 
     return {
-      stdout: res.stdout || '',
-      stderr: res.stderr || '',
-      exitCode: res.exitCode ?? 0,
+      stdout,
+      stderr,
+      exitCode,
       executionTimeMs: Date.now() - startTime,
     };
   } catch (err: unknown) {
+    if (sandbox) {
+      try {
+        await sandbox.kill();
+      } catch {
+        // ignore
+      }
+    }
     const msg = err instanceof Error ? err.message : String(err);
     return {
       stdout: '',

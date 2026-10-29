@@ -42,26 +42,43 @@ export async function executeSecureCode(args: CodeExecutionArgs): Promise<CodeEx
       const sandbox = await Sandbox.create({ apiKey });
       let output: { stdout?: string; stderr?: string; exitCode?: number } = {};
 
+      // Helper to run command safely inside E2B sandbox without throwing on non-zero exit codes
+      const runCommandSafely = async (cmd: string) => {
+        try {
+          const res = await sandbox.commands.run(cmd);
+          return { stdout: res.stdout || '', stderr: res.stderr || '', exitCode: res.exitCode ?? 0 };
+        } catch (cmdErr: any) {
+          // E2B throws CommandExitError when process exits with status != 0 (e.g. syntax errors, assertions, exit 1)
+          if (cmdErr && typeof cmdErr === 'object' && ('exitCode' in cmdErr || 'stdout' in cmdErr || 'stderr' in cmdErr)) {
+            return {
+              stdout: cmdErr.stdout || '',
+              stderr: cmdErr.stderr || cmdErr.message || '',
+              exitCode: typeof cmdErr.exitCode === 'number' ? cmdErr.exitCode : 1,
+            };
+          }
+          throw cmdErr;
+        }
+      };
+
       if (language === 'python' || language === ('py' as any)) {
         await sandbox.files.write('/tmp/main.py', code);
-        const res = await sandbox.commands.run('python3 /tmp/main.py');
-        output = { stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode };
+        output = await runCommandSafely('python3 /tmp/main.py');
       } else if (language === 'bash' || language === ('sh' as any) || language === ('shell' as any)) {
         await sandbox.files.write('/tmp/run.sh', code);
-        const res = await sandbox.commands.run('bash /tmp/run.sh');
-        output = { stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode };
+        output = await runCommandSafely('bash /tmp/run.sh');
       } else if (language === 'rust' || language === ('rs' as any)) {
         await sandbox.files.write('/tmp/main.rs', code);
-        // Install rustc if needed or compile with rustc
-        const res = await sandbox.commands.run('which rustc || (curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source $HOME/.cargo/env); rustc /tmp/main.rs -o /tmp/main_app && /tmp/main_app');
-        output = { stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode };
+        output = await runCommandSafely('which rustc || (curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source $HOME/.cargo/env); rustc /tmp/main.rs -o /tmp/main_app && /tmp/main_app');
       } else {
         await sandbox.files.write('/tmp/main.js', code);
-        const res = await sandbox.commands.run('node /tmp/main.js');
-        output = { stdout: res.stdout, stderr: res.stderr, exitCode: res.exitCode };
+        output = await runCommandSafely('node /tmp/main.js');
       }
 
-      await sandbox.kill();
+      try {
+        await sandbox.kill();
+      } catch {
+        // ignore sandbox cleanup errors
+      }
 
       return {
         stdout: output.stdout || '',

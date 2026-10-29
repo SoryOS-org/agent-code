@@ -10,6 +10,7 @@ import { MermaidBlock } from './MermaidBlock.tsx';
 import { CodeExecutionTerminal } from './CodeExecutionTerminal.tsx';
 import { TerminalView } from './TerminalView.tsx';
 import { parseE2BExecutionBlock } from '../utils/e2bParser.ts';
+import { ThoughtAccordion } from './ThoughtAccordion.tsx';
 import { api } from '../api/client.ts';
 
 interface MarkdownRendererProps {
@@ -18,11 +19,20 @@ interface MarkdownRendererProps {
 }
 
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isStreaming }) => {
-  const cleanedContent = content.replace(/<tool_call>[\s\S]*?(?:<\/tool_call>|$)/g, '').trim();
-  const blocks = parseBlocks(cleanedContent || content);
+  let thoughtText = '';
+  let mainContent = content.replace(/<tool_call>[\s\S]*?(?:<\/tool_call>|$)/g, '').trim();
+
+  const thinkMatch = mainContent.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
+  if (thinkMatch) {
+    thoughtText = thinkMatch[1].trim();
+    mainContent = mainContent.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim();
+  }
+
+  const blocks = parseBlocks(mainContent);
 
   return (
     <div className="max-w-none text-[#ececec] text-[15px] leading-relaxed space-y-3 break-words">
+      {thoughtText && <ThoughtAccordion thought={thoughtText} />}
       {blocks.map((block, idx) => {
         if (block.type === 'code') {
           const lang = (block.language || '').toLowerCase().trim();

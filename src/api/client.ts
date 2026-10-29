@@ -298,4 +298,35 @@ export const api = {
       controller.abort();
     };
   },
+
+  /**
+   * Search Web without API keys via remote @packages/web-service
+   */
+  searchWeb: async (query: string, limit = 5): Promise<{ providerID: string; results: any[]; query: string; latencyMs: number }> => {
+    return request('/websearch', {
+      method: 'POST',
+      body: JSON.stringify({ query, limit }),
+    });
+  },
+
+  /**
+   * Get search providers status
+   */
+  getWebSearchProviders: async (): Promise<{ providers: any[]; default: string }> => {
+    return request('/websearch/providers');
+  },
+
+  /**
+   * Get Workspace File Tree (VS Code Explorer)
+   */
+  getWorkspaceTree: async (): Promise<{ root: any[] }> => {
+    return request('/workspace/tree');
+  },
+
+  /**
+   * Get File Content (VS Code Open File)
+   */
+  getWorkspaceFile: async (path: string): Promise<{ path: string; content: string }> => {
+    return request(`/workspace/file?path=${encodeURIComponent(path)}`);
+  },
 };

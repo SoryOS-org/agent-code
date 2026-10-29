@@ -13,6 +13,7 @@ import { lsTool } from './tools/ls.js';
 import { fetchTool } from './tools/fetch.js';
 import { codeInterpreterTool } from './tools/code_interpreter.js';
 import { taskTool } from './tools/task.js';
+import { websearchTool } from './tools/websearch.js';
 
 export {
   shellTool,
@@ -25,6 +26,7 @@ export {
   fetchTool,
   codeInterpreterTool,
   taskTool,
+  websearchTool,
 };
 
 export function createAgentTools() {
@@ -39,5 +41,6 @@ export function createAgentTools() {
     fetchTool,
     codeInterpreterTool,
     taskTool,
+    websearchTool,
   ];
 }

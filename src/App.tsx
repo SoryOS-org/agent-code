@@ -20,6 +20,7 @@ import { SettingsModal } from './components/SettingsModal.tsx';
 import { DiagramAssistantModal } from './components/DiagramAssistantModal.tsx';
 import { VoiceModeModal } from './components/VoiceModeModal.tsx';
 import { TaskToolsPanel, TaskItem } from './components/TaskToolsPanel.tsx';
+import { CodeExplorerModal } from './components/CodeExplorerModal.tsx';
 import { AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [diagramModalOpen, setDiagramModalOpen] = useState(false);
+  const [codeExplorerOpen, setCodeExplorerOpen] = useState(false);
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [errorToast, setErrorToast] = useState<{ message: string; hint?: string } | null>(null);
 
@@ -448,7 +450,7 @@ export default function App() {
           onClearConversation={handleClearConversation}
           onExportConversation={handleExportConversation}
           onOpenSettings={() => setSettingsOpen(true)}
-          onOpenDiagramStudio={() => setDiagramModalOpen(true)}
+          onOpenCodeExplorer={() => setCodeExplorerOpen(true)}
         />
 
         {/* Error Toast Banner */}
@@ -538,6 +540,13 @@ export default function App() {
         isOpen={diagramModalOpen}
         onClose={() => setDiagramModalOpen(false)}
         onSelectPrompt={(prompt) => handleSendMessage(prompt, [], false)}
+      />
+
+      {/* VS Code Style File Explorer & Code Viewer Modal */}
+      <CodeExplorerModal
+        isOpen={codeExplorerOpen}
+        onClose={() => setCodeExplorerOpen(false)}
+        onSendToChat={(snippet) => handleSendMessage(snippet, [], false)}
       />
 
       {/* ChatGPT-styled Voice Mode Modal */}

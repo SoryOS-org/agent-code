@@ -18,7 +18,7 @@ import {
   Brain,
   ShieldCheck,
   Check,
-  Workflow,
+  Code,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -31,7 +31,7 @@ interface HeaderProps {
   onClearConversation: () => void;
   onExportConversation: () => void;
   onOpenSettings: () => void;
-  onOpenDiagramStudio?: () => void;
+  onOpenCodeExplorer?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -44,7 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
   onClearConversation,
   onExportConversation,
   onOpenSettings,
-  onOpenDiagramStudio,
+  onOpenCodeExplorer,
 }) => {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -180,14 +180,15 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right: Actions & ChatGPT Capsule Pill */}
       <div className="flex items-center space-x-2">
-        {onOpenDiagramStudio && (
+        {/* Dedicated "Code" Explorer Button (VS Code style) */}
+        {onOpenCodeExplorer && (
           <button
-            onClick={onOpenDiagramStudio}
-            title="Studio Diagrammes Mermaid & README"
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-[#2a2a2a] hover:bg-[#383838] text-blue-400 hover:text-blue-300 border border-[#383838] transition-colors text-xs font-medium"
+            onClick={onOpenCodeExplorer}
+            title="Explorateur de fichiers & Code (VS Code)"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-[#2a2a2a] hover:bg-[#383838] text-cyan-400 hover:text-cyan-300 border border-[#383838] transition-all text-xs font-medium shadow-sm hover:border-cyan-500/50"
           >
-            <Workflow className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Diagrammes & README</span>
+            <Code className="w-3.5 h-3.5" />
+            <span>Code</span>
           </button>
         )}
 
@@ -221,16 +222,16 @@ export const Header: React.FC<HeaderProps> = ({
                   onClick={() => setMoreMenuOpen(false)}
                 />
                 <div className="absolute right-0 mt-2 w-52 rounded-2xl bg-[#2f2f2f] border border-[#383838] shadow-2xl z-50 p-1.5 space-y-1">
-                  {onOpenDiagramStudio && (
+                  {onOpenCodeExplorer && (
                     <button
                       onClick={() => {
-                        onOpenDiagramStudio();
+                        onOpenCodeExplorer();
                         setMoreMenuOpen(false);
                       }}
-                      className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs text-blue-300 hover:bg-[#3c3c3c] transition-colors"
+                      className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs text-cyan-300 hover:bg-[#3c3c3c] transition-colors"
                     >
-                      <Workflow className="w-4 h-4 text-blue-400" />
-                      <span>Diagrammes & README</span>
+                      <Code className="w-4 h-4 text-cyan-400" />
+                      <span>Explorateur Code</span>
                     </button>
                   )}
 
