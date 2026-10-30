@@ -338,14 +338,17 @@ export class OpenAIAdapter implements ProviderAdapter {
 
       const formatted: any = { role: msg.role, content: msg.content || '' };
       if (msg.toolCalls && msg.toolCalls.length > 0) {
-        formatted.tool_calls = msg.toolCalls.map((tc) => ({
-          id: tc.id,
-          type: 'function',
-          function: {
-            name: tc.name,
-            arguments: JSON.stringify(tc.args),
-          },
-        }));
+        const validCalls = msg.toolCalls.filter((tc) => tc && tc.name && tc.name.trim().length > 0);
+        if (validCalls.length > 0) {
+          formatted.tool_calls = validCalls.map((tc) => ({
+            id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
+            type: 'function',
+            function: {
+              name: tc.name.trim(),
+              arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {}),
+            },
+          }));
+        }
       }
       messages.push(formatted);
     }
@@ -393,7 +396,29 @@ export class OpenAIAdapter implements ProviderAdapter {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    const toolCallMap = new Map<string, { id: string; name: string; args: string }>();
+    const toolCallsByIndex = new Map<number, { id: string; name: string; args: string }>();
+
+    function* flushToolCalls() {
+      for (const tc of toolCallsByIndex.values()) {
+        const name = tc.name.trim();
+        if (!name) continue;
+        let parsedArgs: Record<string, unknown> = {};
+        try {
+          parsedArgs = tc.args.trim().length > 0 ? JSON.parse(tc.args) : {};
+        } catch {
+          console.warn(`[OpenAIAdapter] JSON parse warning for ${name}:`, tc.args);
+        }
+        yield {
+          type: 'tool_call' as const,
+          toolCall: {
+            id: tc.id || `call_${Date.now()}`,
+            name,
+            args: parsedArgs,
+          },
+        };
+      }
+      toolCallsByIndex.clear();
+    }
 
     while (true) {
       const { done, value } = await reader.read();
@@ -408,14 +433,8 @@ export class OpenAIAdapter implements ProviderAdapter {
         if (!trimmed || !trimmed.startsWith('data: ')) continue;
         const dataStr = trimmed.slice(6);
         if (dataStr === '[DONE]') {
-          for (const tc of toolCallMap.values()) {
-            if (!tc.name) continue;
-            try {
-              yield {
-                type: 'tool_call',
-                toolCall: { id: tc.id, name: tc.name, args: JSON.parse(tc.args || '{}') },
-              };
-            } catch { /* ignore */ }
+          for (const chunk of flushToolCalls()) {
+            yield chunk;
           }
           yield { type: 'finish', finishReason: 'stop' };
           return;
@@ -434,33 +453,35 @@ export class OpenAIAdapter implements ProviderAdapter {
 
           if (toolCalls && Array.isArray(toolCalls)) {
             for (const tc of toolCalls) {
-              const id = tc.id || `tc-${tc.index || 0}`;
-              if (!toolCallMap.has(id)) {
-                toolCallMap.set(id, { id, name: '', args: '' });
+              const index = typeof tc.index === 'number' ? tc.index : 0;
+              if (!toolCallsByIndex.has(index)) {
+                toolCallsByIndex.set(index, {
+                  id: tc.id || `call_${Date.now()}_${index}`,
+                  name: tc.function?.name || '',
+                  args: tc.function?.arguments || '',
+                });
+              } else {
+                const existing = toolCallsByIndex.get(index)!;
+                if (tc.id) existing.id = tc.id;
+                if (tc.function?.name) existing.name += tc.function.name;
+                if (tc.function?.arguments) existing.args += tc.function.arguments;
               }
-              const existing = toolCallMap.get(id)!;
-              if (tc.function?.name) existing.name += tc.function.name;
-              if (tc.function?.arguments) existing.args += tc.function.arguments;
             }
           }
 
           if (finishReason === 'tool_calls') {
-            for (const tc of toolCallMap.values()) {
-              if (!tc.name) continue;
-              try {
-                yield {
-                  type: 'tool_call',
-                  toolCall: { id: tc.id, name: tc.name, args: JSON.parse(tc.args || '{}') },
-                };
-              } catch { /* wait */ }
+            for (const chunk of flushToolCalls()) {
+              yield chunk;
             }
-            toolCallMap.clear();
             yield { type: 'finish', finishReason };
           } else if (finishReason) {
+            for (const chunk of flushToolCalls()) {
+              yield chunk;
+            }
             yield { type: 'finish', finishReason };
           }
         } catch {
-          // ignore
+          // ignore parse error
         }
       }
     }
@@ -765,14 +786,17 @@ export class OpenRouterFreeAdapter implements ProviderAdapter {
 
       const formatted: any = { role: msg.role, content: msg.content || '' };
       if (msg.toolCalls && msg.toolCalls.length > 0) {
-        formatted.tool_calls = msg.toolCalls.map((tc) => ({
-          id: tc.id,
-          type: 'function',
-          function: {
-            name: tc.name,
-            arguments: JSON.stringify(tc.args),
-          },
-        }));
+        const validCalls = msg.toolCalls.filter((tc) => tc && tc.name && tc.name.trim().length > 0);
+        if (validCalls.length > 0) {
+          formatted.tool_calls = validCalls.map((tc) => ({
+            id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
+            type: 'function',
+            function: {
+              name: tc.name.trim(),
+              arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {}),
+            },
+          }));
+        }
       }
       messages.push(formatted);
     }
@@ -859,7 +883,29 @@ export class OpenRouterFreeAdapter implements ProviderAdapter {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    const toolCallMap = new Map<string, { id: string; name: string; args: string }>();
+    const toolCallsByIndex = new Map<number, { id: string; name: string; args: string }>();
+
+    function* flushToolCalls() {
+      for (const tc of toolCallsByIndex.values()) {
+        const name = tc.name.trim();
+        if (!name) continue;
+        let parsedArgs: Record<string, unknown> = {};
+        try {
+          parsedArgs = tc.args.trim().length > 0 ? JSON.parse(tc.args) : {};
+        } catch {
+          console.warn(`[OpenRouterAdapter] JSON parse warning for ${name}:`, tc.args);
+        }
+        yield {
+          type: 'tool_call' as const,
+          toolCall: {
+            id: tc.id || `call_${Date.now()}`,
+            name,
+            args: parsedArgs,
+          },
+        };
+      }
+      toolCallsByIndex.clear();
+    }
 
     while (true) {
       const { done, value } = await reader.read();
@@ -874,15 +920,8 @@ export class OpenRouterFreeAdapter implements ProviderAdapter {
         if (!trimmed || !trimmed.startsWith('data: ')) continue;
         const dataStr = trimmed.slice(6);
         if (dataStr === '[DONE]') {
-          // Yield final collected tool calls
-          for (const tc of toolCallMap.values()) {
-            if (!tc.name) continue;
-            try {
-              yield {
-                type: 'tool_call',
-                toolCall: { id: tc.id, name: tc.name, args: JSON.parse(tc.args || '{}') },
-              };
-            } catch { /* ignore incomplete final parse */ }
+          for (const chunk of flushToolCalls()) {
+            yield chunk;
           }
           yield { type: 'finish', finishReason: 'stop' };
           return;
@@ -905,35 +944,31 @@ export class OpenRouterFreeAdapter implements ProviderAdapter {
 
           if (toolCalls && Array.isArray(toolCalls)) {
             for (const tc of toolCalls) {
-              const index = tc.index || 0;
-              const id = tc.id || `tc-${index}`;
-              
-              if (!toolCallMap.has(id)) {
-                toolCallMap.set(id, { id, name: '', args: '' });
+              const index = typeof tc.index === 'number' ? tc.index : 0;
+              if (!toolCallsByIndex.has(index)) {
+                toolCallsByIndex.set(index, {
+                  id: tc.id || `call_${Date.now()}_${index}`,
+                  name: tc.function?.name || '',
+                  args: tc.function?.arguments || '',
+                });
+              } else {
+                const existing = toolCallsByIndex.get(index)!;
+                if (tc.id) existing.id = tc.id;
+                if (tc.function?.name) existing.name += tc.function.name;
+                if (tc.function?.arguments) existing.args += tc.function.arguments;
               }
-              
-              const existing = toolCallMap.get(id)!;
-              if (tc.function?.name) existing.name += tc.function.name;
-              if (tc.function?.arguments) existing.args += tc.function.arguments;
-
-              // Optional: yield partial tool calls if name and args look somewhat complete
-              // But for now, we'll wait for the finish_reason or end of stream
             }
           }
 
           if (finishReason === 'tool_calls') {
-             for (const tc of toolCallMap.values()) {
-                if (!tc.name) continue;
-                try {
-                  yield {
-                    type: 'tool_call',
-                    toolCall: { id: tc.id, name: tc.name, args: JSON.parse(tc.args || '{}') },
-                  };
-                } catch { /* wait for more data */ }
-             }
-             toolCallMap.clear(); // Clear so we don't yield them twice
-             yield { type: 'finish', finishReason };
+            for (const chunk of flushToolCalls()) {
+              yield chunk;
+            }
+            yield { type: 'finish', finishReason };
           } else if (finishReason) {
+            for (const chunk of flushToolCalls()) {
+              yield chunk;
+            }
             yield { type: 'finish', finishReason };
           }
         } catch {

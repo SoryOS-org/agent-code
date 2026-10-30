@@ -3,6 +3,7 @@
  */
 
 import express from 'express';
+import path from 'path';
 import { authMiddleware } from './middleware/auth.ts';
 import { healthRouter } from './routes/health.ts';
 import { modelsRouter } from './routes/models.ts';
@@ -18,6 +19,9 @@ export function createApiApp() {
   // Middleware
   app.use(express.json({ limit: '25mb' }));
   app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+  // Serve agent workspace files statically for preview
+  app.use('/workspace-files', express.static(path.join(process.cwd(), 'workspace')));
 
   // Security and CORS headers
   app.use((_req, res, next) => {

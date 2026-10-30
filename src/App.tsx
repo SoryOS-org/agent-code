@@ -49,7 +49,7 @@ export default function App() {
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [terminalModalOpen, setTerminalModalOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string>(
-    typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
+    typeof window !== 'undefined' ? `${window.location.origin}/workspace-files/index.html` : 'http://localhost:3000'
   );
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [errorToast, setErrorToast] = useState<{ message: string; hint?: string } | null>(null);
@@ -407,6 +407,15 @@ export default function App() {
 
             if (data.toolCalls && data.toolCalls.length > 0) {
               setLastWorkspaceUpdate(Date.now());
+              for (const tc of data.toolCalls) {
+                if ((tc.name === 'write' || tc.name === 'e2b_write_file') && tc.args && typeof (tc.args as any).path === 'string') {
+                  const p = (tc.args as any).path;
+                  if (p.endsWith('.html')) {
+                    const cleanP = p.replace(/^[/\\]+/, '').replace(/^workspace[/\\]+/, '');
+                    setPreviewUrl(`${window.location.origin}/workspace-files/${cleanP}`);
+                  }
+                }
+              }
             }
 
             // Refresh conversation title in sidebar if updated

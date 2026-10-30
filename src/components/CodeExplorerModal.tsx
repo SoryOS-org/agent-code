@@ -125,13 +125,13 @@ export const CodeExplorerModal: React.FC<CodeExplorerModalProps> = ({
 
   const activeTab = tabs.find((t) => t.path === activeTabPath);
 
-  const renderTreeItem = (node: FileNode, level: number) => {
+  const renderTreeItem = (node: FileNode, level: number, index: number) => {
     const isFolder = node.type === 'directory';
     const isExpanded = expandedFolders.has(node.path);
     const isActive = activeTabPath === node.path;
 
     return (
-      <div key={`${node.path}-${node.type}`}>
+      <div key={`${node.path}-${node.type}-${index}`}>
         <div
           className={`group flex items-center py-1 px-2 cursor-pointer rounded-lg hover:bg-[#2a2d2e] transition-colors text-[13px] ${
             isActive ? 'bg-[#37373d] text-cyan-400' : 'text-[#cccccc]'
@@ -156,7 +156,7 @@ export const CodeExplorerModal: React.FC<CodeExplorerModalProps> = ({
 
         {isFolder && isExpanded && node.children && (
           <div>
-            {node.children.map((child) => renderTreeItem(child, level + 1))}
+            {node.children.map((child, childIdx) => renderTreeItem(child, level + 1, childIdx))}
           </div>
         )}
       </div>
@@ -251,7 +251,7 @@ export const CodeExplorerModal: React.FC<CodeExplorerModalProps> = ({
                 <Code className="w-3 h-3" />
               </div>
               <div className="flex-1 overflow-y-auto py-2 no-scrollbar">
-                {tree.map((node) => renderTreeItem(node, 0))}
+                {tree.map((node, index) => renderTreeItem(node, 0, index))}
                 {tree.length === 0 && !loadingTree && (
                   <div className="px-4 py-8 text-center text-[#666] text-xs">
                     Aucun fichier trouvé.

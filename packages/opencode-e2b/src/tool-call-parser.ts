@@ -52,8 +52,8 @@ export async function executeXmlToolCalls(calls: ParsedXmlToolCall[]): Promise<A
     const { toolName, args } = call;
     try {
       if (toolName === 'e2b_write_file' || toolName === 'write') {
-        const path = args.path || args.filename || 'file.txt';
-        const content = args.content || args.code || '';
+        const path = args.path || args.filePath || args.filename || args.file || (args.content?.includes('<html') ? 'index.html' : 'app.js');
+        const content = args.content || args.code || args.text || '';
         const res = await writeE2BFile(path, content);
         results.push({ toolName, result: res });
       } else if (toolName === 'e2b_run_command' || toolName === 'shell') {
