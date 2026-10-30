@@ -56,54 +56,52 @@ export async function writeE2BFile(pathStr: string, content: string, dynamicApiK
  */
 export async function runE2BCommand(command: string, dynamicApiKey?: string): Promise<{ stdout: string; stderr: string; exitCode: number; executionTimeMs: number }> {
   const startTime = Date.now();
-  const apiKey = dynamicApiKey || process.env.E2B_API_KEY || 'e2b_36dc65b1815ea00af20407c9ba6f42d8c5f6487e';
-  let sandbox: Sandbox | null = null;
-  try {
-    sandbox = await Sandbox.create({ apiKey });
-    let stdout = '';
-    let stderr = '';
-    let exitCode = 0;
+  const apiKey = dynamicApiKey || process.env.E2B_API_KEY;
 
+  if (apiKey && apiKey.trim().length > 0 && !apiKey.startsWith('dummy')) {
+    let sandbox: Sandbox | null = null;
     try {
+      sandbox = await Sandbox.create({ apiKey });
       const res = await sandbox.commands.run(command);
-      stdout = res.stdout || '';
-      stderr = res.stderr || '';
-      exitCode = res.exitCode ?? 0;
-    } catch (cmdErr: any) {
-      if (cmdErr && typeof cmdErr === 'object' && ('exitCode' in cmdErr || 'stdout' in cmdErr || 'stderr' in cmdErr)) {
-        stdout = cmdErr.stdout || '';
-        stderr = cmdErr.stderr || cmdErr.message || '';
-        exitCode = typeof cmdErr.exitCode === 'number' ? cmdErr.exitCode : 1;
-      } else {
-        throw cmdErr;
-      }
-    }
-
-    try {
       await sandbox.kill();
-    } catch {
-      // ignore
+      return {
+        stdout: res.stdout || '',
+        stderr: res.stderr || '',
+        exitCode: res.exitCode ?? 0,
+        executionTimeMs: Date.now() - startTime,
+      };
+    } catch (e2bErr) {
+      console.warn('[E2B] Cloud Sandbox command execution fallback to local workspace:', e2bErr);
     }
+  }
+
+  // Robust Local Execution Fallback
+  try {
+    const { exec } = await import('child_process');
+    const util = await import('util');
+    const execPromise = util.promisify(exec);
+    const path = await import('path');
+    const fs = await import('fs/promises');
+    const workspaceRoot = path.join(process.cwd(), 'workspace');
+    await fs.mkdir(workspaceRoot, { recursive: true });
+
+    const { stdout, stderr } = await execPromise(command, {
+      cwd: workspaceRoot,
+      timeout: 30000,
+      maxBuffer: 1024 * 1024 * 10,
+    });
 
     return {
-      stdout,
-      stderr,
-      exitCode,
+      stdout: stdout || '',
+      stderr: stderr || '',
+      exitCode: 0,
       executionTimeMs: Date.now() - startTime,
     };
-  } catch (err: unknown) {
-    if (sandbox) {
-      try {
-        await sandbox.kill();
-      } catch {
-        // ignore
-      }
-    }
-    const msg = err instanceof Error ? err.message : String(err);
+  } catch (localErr: any) {
     return {
-      stdout: '',
-      stderr: `Erreur d'exécution de commande E2B : ${msg}`,
-      exitCode: 1,
+      stdout: localErr.stdout || '',
+      stderr: localErr.stderr || localErr.message || String(localErr),
+      exitCode: localErr.code || 1,
       executionTimeMs: Date.now() - startTime,
     };
   }

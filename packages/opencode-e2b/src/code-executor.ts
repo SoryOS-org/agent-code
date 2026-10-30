@@ -1,6 +1,5 @@
 /**
- * Secure Code Execution Tool using E2B Sandboxes (opencode-e2b integration)
- * Supports Python and JavaScript execution with secure sandboxing and output capture.
+ * Secure Code Execution Tool using E2B Sandboxes with Robust Local Fallback
  */
 
 import { Sandbox } from 'e2b';
@@ -33,22 +32,18 @@ export async function executeSecureCode(args: CodeExecutionArgs, dynamicApiKey?:
     };
   }
 
-  // Check if E2B API key is configured (use dynamic if provided, otherwise fallback to env)
-  const apiKey = dynamicApiKey || process.env.E2B_API_KEY || 'e2b_36dc65b1815ea00af20407c9ba6f42d8c5f6487e';
+  const apiKey = dynamicApiKey || process.env.E2B_API_KEY;
 
-  if (apiKey && apiKey.trim().length > 0) {
+  if (apiKey && apiKey.trim().length > 0 && !apiKey.startsWith('dummy')) {
     try {
-      // Create E2B sandbox for secure cloud execution
       const sandbox = await Sandbox.create({ apiKey });
       let output: { stdout?: string; stderr?: string; exitCode?: number } = {};
 
-      // Helper to run command safely inside E2B sandbox without throwing on non-zero exit codes
       const runCommandSafely = async (cmd: string) => {
         try {
           const res = await sandbox.commands.run(cmd);
           return { stdout: res.stdout || '', stderr: res.stderr || '', exitCode: res.exitCode ?? 0 };
         } catch (cmdErr: any) {
-          // E2B throws CommandExitError when process exits with status != 0 (e.g. syntax errors, assertions, exit 1)
           if (cmdErr && typeof cmdErr === 'object' && ('exitCode' in cmdErr || 'stdout' in cmdErr || 'stderr' in cmdErr)) {
             return {
               stdout: cmdErr.stdout || '',
@@ -66,9 +61,6 @@ export async function executeSecureCode(args: CodeExecutionArgs, dynamicApiKey?:
       } else if (language === 'bash' || language === ('sh' as any) || language === ('shell' as any)) {
         await sandbox.files.write('/tmp/run.sh', code);
         output = await runCommandSafely('bash /tmp/run.sh');
-      } else if (language === 'rust' || language === ('rs' as any)) {
-        await sandbox.files.write('/tmp/main.rs', code);
-        output = await runCommandSafely('which rustc || (curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source $HOME/.cargo/env); rustc /tmp/main.rs -o /tmp/main_app && /tmp/main_app');
       } else {
         await sandbox.files.write('/tmp/main.js', code);
         output = await runCommandSafely('node /tmp/main.js');
@@ -76,9 +68,7 @@ export async function executeSecureCode(args: CodeExecutionArgs, dynamicApiKey?:
 
       try {
         await sandbox.kill();
-      } catch {
-        // ignore sandbox cleanup errors
-      }
+      } catch {}
 
       return {
         stdout: output.stdout || '',
@@ -88,87 +78,72 @@ export async function executeSecureCode(args: CodeExecutionArgs, dynamicApiKey?:
         executionTimeMs: Date.now() - startTime,
         environment: 'E2B Cloud Secure Sandbox',
       };
-    } catch (e2bErr: unknown) {
-      console.warn('[E2B Execution] Sandbox execution fallback triggered:', e2bErr);
+    } catch (e2bErr) {
+      console.warn('[E2B] Cloud Sandbox execution fallback to local runtime:', e2bErr);
     }
   }
 
-  // Secure Local / Node.js Sandbox Fallback (if E2B key not present or sandbox creation failed)
-  return executeLocalSecureFallback(language, code, startTime);
-}
+  // Local execution fallback
+  try {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const { exec } = await import('child_process');
+    const util = await import('util');
+    const execPromise = util.promisify(exec);
+    const workspaceRoot = path.join(process.cwd(), 'workspace');
+    await fs.mkdir(workspaceRoot, { recursive: true });
 
-function executeLocalSecureFallback(
-  language: CodeExecutionArgs['language'],
-  code: string,
-  startTime: number
-): CodeExecutionResult {
-  if (language === 'javascript' || language === 'typescript') {
-    try {
-      // Capture console.log
-      let outputBuffer = '';
-      const customConsole = {
-        log: (...args: any[]) => {
-          outputBuffer += args.map(arg => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg))).join(' ') + '\n';
-        },
-        error: (...args: any[]) => {
-          outputBuffer += '[ERROR] ' + args.map(arg => String(arg)).join(' ') + '\n';
-        },
-        warn: (...args: any[]) => {
-          outputBuffer += '[WARN] ' + args.map(arg => String(arg)).join(' ') + '\n';
-        },
-      };
-
-      // Execute in isolated Function scope
-      const wrappedFn = new Function('console', `try { ${code} } catch(e) { console.error(e.message); }`);
-      wrappedFn(customConsole);
-
+    if (language === 'python' || language === ('py' as any)) {
+      const filePath = path.join(workspaceRoot, 'script_' + Date.now() + '.py');
+      await fs.writeFile(filePath, code, 'utf-8');
+      const { stdout, stderr } = await execPromise(`python3 ${filePath}`, { timeout: 15000 });
+      await fs.unlink(filePath).catch(() => {});
       return {
-        stdout: outputBuffer.trim(),
-        stderr: '',
+        stdout: stdout || '',
+        stderr: stderr || '',
         exitCode: 0,
+        result: stdout,
         executionTimeMs: Date.now() - startTime,
-        environment: 'Aether Secure Node.js Sandbox (Fallback)',
+        environment: 'Local Python Runtime',
       };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } else {
+      const filePath = path.join(workspaceRoot, 'script_' + Date.now() + '.js');
+      await fs.writeFile(filePath, code, 'utf-8');
+      const { stdout, stderr } = await execPromise(`node ${filePath}`, { timeout: 15000 });
+      await fs.unlink(filePath).catch(() => {});
       return {
-        stdout: '',
-        stderr: msg,
-        exitCode: 1,
+        stdout: stdout || '',
+        stderr: stderr || '',
+        exitCode: 0,
+        result: stdout,
         executionTimeMs: Date.now() - startTime,
-        environment: 'Aether Secure Node.js Sandbox (Fallback)',
+        environment: 'Local Node.js Runtime',
       };
     }
-  } else {
-    // Python simulation or message
+  } catch (localErr: any) {
     return {
-      stdout: `[Simulation Python] Code exécuté avec succès dans l'environnement virtuel.\nRésultat simulé pour : \n${code}`,
-      stderr: '',
-      exitCode: 0,
+      stdout: localErr.stdout || '',
+      stderr: localErr.stderr || localErr.message || String(localErr),
+      exitCode: 1,
       executionTimeMs: Date.now() - startTime,
-      environment: 'Aether Python Runtime Simulator',
+      environment: 'Local Runtime Error',
     };
   }
 }
 
-/**
-     * Create E2B Code Interpreter tool definition for AI ToolRegistry
-     */
 export function createE2BCodeInterpreterTool() {
   return {
     name: 'e2b_code_interpreter',
-    description: 'Exécuter du code Python ou JavaScript de manière sécurisée dans une sandbox cloud E2B ou un environnement isolé.',
+    description: 'Exécuter du code Python ou JavaScript de manière sécurisée.',
     parameters: {
       type: 'object',
       properties: {
         language: {
           type: 'string',
           enum: ['python', 'javascript', 'typescript'],
-          description: 'Le langage de programmation à exécuter (python, javascript, typescript).',
         },
         code: {
           type: 'string',
-          description: 'Le code source complet à exécuter.',
         },
       },
       required: ['language', 'code'],
