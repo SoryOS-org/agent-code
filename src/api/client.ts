@@ -331,12 +331,39 @@ export const api = {
   },
 
   /**
-   * Run Terminal Command in E2B Sandbox
+   * Run Terminal Command in E2B Sandbox (one-shot route)
    */
   runTerminalCommand: async (command: string): Promise<{ stdout: string; stderr: string; exitCode: number; executionTimeMs: number }> => {
     return request('/code/command', {
       method: 'POST',
       body: JSON.stringify({ command }),
+    });
+  },
+
+  /**
+   * Open the real-time PTY stream of the persistent E2B sandbox terminal
+   */
+  openTerminalStream: (): EventSource => {
+    return new EventSource(`${API_BASE}/code/terminal/stream`, { withCredentials: false });
+  },
+
+  /**
+   * Write raw input (including '\n') into the interactive PTY
+   */
+  sendTerminalInput: async (data: string): Promise<{ sent: number }> => {
+    return request('/code/terminal/input', {
+      method: 'POST',
+      body: JSON.stringify({ data }),
+    });
+  },
+
+  /**
+   * Resize the interactive PTY window
+   */
+  sendTerminalResize: async (cols: number, rows: number): Promise<{ resized: boolean }> => {
+    return request('/code/terminal/resize', {
+      method: 'POST',
+      body: JSON.stringify({ cols, rows }),
     });
   },
 };

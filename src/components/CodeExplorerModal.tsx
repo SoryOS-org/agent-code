@@ -71,6 +71,16 @@ export const CodeExplorerModal: React.FC<CodeExplorerModalProps> = ({
     }
   }, [isOpen, refreshTrigger]);
 
+  // Live workspace: the E2B sandbox is mirrored locally in near real-time,
+  // poll the tree while the explorer is open so remote changes appear.
+  useEffect(() => {
+    if (!isOpen) return;
+    const interval = setInterval(() => {
+      fetchTree().catch(() => {});
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isOpen]);
+
   const fetchTree = async () => {
     setLoadingTree(true);
     try {

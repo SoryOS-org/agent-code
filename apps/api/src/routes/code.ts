@@ -84,6 +84,80 @@ codeRouter.delete('/code/sandbox', async (_req, res) => {
 });
 
 /**
+ * GET /code/terminal/stream
+ * Real PTY output stream (SSE) from the persistent E2B sandbox terminal.
+ * New clients receive the last chunks (backlog) then live data.
+ */
+codeRouter.get('/code/terminal/stream', async (req, res) => {
+  try {
+    const { ensurePtySession, subscribePty, getPtyBacklog } = await import('@packages/e2b/src/pty-manager.ts');
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    res.write(`event: pty_status\ndata: ${JSON.stringify(await ensurePtySession())}\n\n`);
+    for (const chunk of getPtyBacklog()) {
+      res.write(`event: pty\ndata: ${JSON.stringify(chunk)}\n\n`);
+    }
+
+    const unsubscribe = subscribePty((chunk) => {
+      res.write(`event: pty\ndata: ${JSON.stringify(chunk)}\n\n`);
+    });
+
+    const heartbeat = setInterval(() => {
+      res.write(': hb\n\n');
+    }, 15000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: message });
+    } else {
+      res.write(`event: pty_error\ndata: ${JSON.stringify(message)}\n\n`);
+      res.end();
+    }
+  }
+});
+
+/**
+ * POST /code/terminal/input
+ * Write raw input into the interactive PTY (real commands in the sandbox shell)
+ */
+codeRouter.post('/code/terminal/input', async (req, res) => {
+  const { data } = (req.body || {}) as { data?: string };
+  if (typeof data !== 'string' || data.length === 0) {
+    res.status(400).json({ error: "Les données d'entrée sont requises." });
+    return;
+  }
+  try {
+    const { writePtyInput } = await import('@packages/e2b/src/pty-manager.ts');
+    res.json(await writePtyInput(data));
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/**
+ * POST /code/terminal/resize
+ * Resize the interactive PTY window
+ */
+codeRouter.post('/code/terminal/resize', async (req, res) => {
+  try {
+    const { resizePty } = await import('@packages/e2b/src/pty-manager.ts');
+    res.json(await resizePty(Number(req.body?.cols) || 80, Number(req.body?.rows) || 24));
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/**
  * POST /code/command
  * Run terminal / shell commands in E2B sandbox or secure local fallback
  */

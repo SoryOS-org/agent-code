@@ -8,7 +8,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import { Sandbox } from 'e2b';
+import { Sandbox, WatchHandle } from 'e2b';
 
 const SANDBOX_TIMEOUT_MS = Number(process.env.E2B_SANDBOX_TIMEOUT_MS) || 3_600_000; // 1h, re-extended at each use
 const SANDBOX_PROJECT_ROOT = process.env.E2B_PROJECT_PATH || '/home/user/project';
@@ -29,6 +29,89 @@ function resolveApiKey(dynamicApiKey?: string): string {
 
 export function isE2BEnabled(dynamicApiKey?: string): boolean {
   return resolveApiKey(dynamicApiKey).length > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Real-time filesystem synchronization (sandbox -> local mirror)
+// ---------------------------------------------------------------------------
+
+const FS_EVENT_DEBOUNCE_MS = 300;
+const FS_SIZE_LIMIT = MAX_SYNC_DOWN_FILE_BYTES;
+
+let fsWatchHandle: WatchHandle | null = null;
+let fsWatchSandboxId: string | null = null;
+const fsEventTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+async function mirrorSandboxPathToLocally(sandbox: Sandbox, relPath: string, mode: 'write' | 'remove') {
+  const localPath = path.resolve(WORKSPACE_ROOT, relPath);
+  if (!localPath.startsWith(WORKSPACE_ROOT)) return;
+  if (SYNC_IGNORE.has(relPath.split('/')[0])) return;
+
+  try {
+    if (mode === 'remove') {
+      await fs.rm(localPath, { recursive: true, force: true });
+      return;
+    }
+    const entry = (await sandbox.files.list(path.posix.dirname(path.posix.join(SANDBOX_PROJECT_ROOT, relPath))))
+      .find((e) => e.path === path.posix.join(SANDBOX_PROJECT_ROOT, relPath));
+    if (!entry || entry.type !== 'file' || entry.size > FS_SIZE_LIMIT) return;
+    const content = await sandbox.files.read(entry.path, { format: 'bytes' });
+    await fs.mkdir(path.dirname(localPath), { recursive: true });
+    await fs.writeFile(localPath, Buffer.from(content));
+  } catch {
+    // ignore transient mirror errors
+  }
+}
+
+/**
+ * Watch the sandbox project directory and mirror every change back to the
+ * local workspace in near real-time (~300ms debounce), so the code explorer,
+ * editor and preview stay live without full re-syncs.
+ */
+export async function ensureRealtimeFsSync(sandbox: Sandbox): Promise<void> {
+  if (fsWatchHandle && fsWatchSandboxId === sandbox.sandboxId) return;
+
+  if (fsWatchHandle) {
+    await fsWatchHandle.stop().catch(() => {});
+    fsWatchHandle = null;
+  }
+
+  try {
+    fsWatchHandle = await sandbox.files.watchDir(
+      SANDBOX_PROJECT_ROOT,
+      (event) => {
+        const relPath = event.name.replace(/^\/+/, '');
+        if (!relPath || relPath === '.' || relPath.includes('..')) return;
+
+        const timers = fsEventTimers;
+        const existing = timers.get(relPath);
+        if (existing) clearTimeout(existing);
+
+        if (event.type === 'remove') {
+          timers.delete(relPath);
+          void mirrorSandboxPathToLocally(sandbox, relPath, 'remove');
+          return;
+        }
+
+        if (event.type === 'chmod') return;
+
+        const timer = setTimeout(() => {
+          timers.delete(relPath);
+          void mirrorSandboxPathToLocally(sandbox, relPath, 'write');
+        }, FS_EVENT_DEBOUNCE_MS);
+        timers.set(relPath, timer);
+      },
+      { recursive: true, timeoutMs: 0, onExit: () => {
+        // Watch ended (sandbox restarts, etc.): re-arm on the next tool call.
+        fsWatchHandle = null;
+        fsWatchSandboxId = null;
+      } },
+    );
+    fsWatchSandboxId = sandbox.sandboxId;
+  } catch {
+    // watching is best-effort; batch syncs still keep the mirror coherent
+    fsWatchHandle = null;
+  }
 }
 
 async function persistSandboxId(sandboxId: string) {
@@ -160,6 +243,7 @@ export async function getOrCreateSandbox(dynamicApiKey?: string): Promise<Sandbo
 
   if (inProcessSandbox && (await isSandboxAlive(inProcessSandbox))) {
     void inProcessSandbox.setTimeout(SANDBOX_TIMEOUT_MS).catch(() => {});
+    void ensureRealtimeFsSync(inProcessSandbox);
     return inProcessSandbox;
   }
   if (inProcessSandbox) inProcessSandbox = null;
@@ -171,6 +255,7 @@ export async function getOrCreateSandbox(dynamicApiKey?: string): Promise<Sandbo
       if (await isSandboxAlive(sandbox)) {
         inProcessSandbox = sandbox;
         void sandbox.setTimeout(SANDBOX_TIMEOUT_MS).catch(() => {});
+        void ensureRealtimeFsSync(sandbox);
         return sandbox;
       }
       await sandbox.kill().catch(() => {});
@@ -185,6 +270,7 @@ export async function getOrCreateSandbox(dynamicApiKey?: string): Promise<Sandbo
     await syncWorkspaceToSandbox(sandbox);
     await persistSandboxId(sandbox.sandboxId);
     inProcessSandbox = sandbox;
+    void ensureRealtimeFsSync(sandbox);
     return sandbox;
   } catch (syncErr) {
     await sandbox.kill().catch(() => {});
