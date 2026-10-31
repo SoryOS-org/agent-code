@@ -18,17 +18,17 @@ import type { PluginLogger } from "./types.js"
  * Prefix for templates managed by this plugin. GC uses it as the ownership
  * boundary.
  */
-export const MANAGED_TEMPLATE_PREFIX = "opencode-e2b-"
+export const MANAGED_TEMPLATE_PREFIX = "e2b-"
 
 /**
  * Absolute path inside the sandbox where the plugin writes an empty file to
  * release the baked `opencode serve` command.
  */
-export const BOOTSTRAP_READY_MARKER = "/tmp/.opencode-e2b-bootstrap-ready"
+export const BOOTSTRAP_READY_MARKER = "/tmp/.e2b-bootstrap-ready"
 
-const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
+const SYSTEMD_SERVICE_NAME = "e2b.service"
 const SYSTEMD_SERVICE_PATH = `/etc/systemd/system/${SYSTEMD_SERVICE_NAME}`
-const SYSTEMD_START_SCRIPT_PATH = "/usr/local/bin/opencode-e2b-start"
+const SYSTEMD_START_SCRIPT_PATH = "/usr/local/bin/e2b-start"
 
 // Run opencode as the project-owning user, not root (`User=` is how a systemd
 // service drops root). As root, git's dubious-ownership check rejects the
@@ -40,7 +40,7 @@ const SANDBOX_USER = "user"
  * E2B's `Sandbox.create({ envs })` only affects later commands, not the
  * template init command, so OpenCode env is delivered through this file.
  */
-export const RUNTIME_ENV_FILE = "/tmp/.opencode-e2b.env"
+export const RUNTIME_ENV_FILE = "/tmp/.e2b.env"
 
 const managedTemplatePromises = new Map<string, Promise<string>>()
 const MANAGED_TEMPLATE_READY_TIMEOUT_MS = 30 * 60 * 1000

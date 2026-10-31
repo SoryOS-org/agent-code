@@ -8,7 +8,7 @@ import { normalizeOptions } from "../dist/config.js"
 import { uploadLocalSnapshot } from "../dist/upload.js"
 
 test("uploadLocalSnapshot uploads project files and skips default ignores", async () => {
-  const localRoot = await mkdtemp(path.join(tmpdir(), "opencode-e2b-upload-"))
+  const localRoot = await mkdtemp(path.join(tmpdir(), "e2b-upload-"))
   try {
     await mkdir(path.join(localRoot, "src"), { recursive: true })
     await mkdir(path.join(localRoot, "node_modules/pkg"), { recursive: true })
@@ -39,8 +39,8 @@ test("uploadLocalSnapshot uploads project files and skips default ignores", asyn
 })
 
 test("uploadLocalSnapshot refuses followed symlinks outside the workspace", async () => {
-  const localRoot = await mkdtemp(path.join(tmpdir(), "opencode-e2b-upload-"))
-  const outsideRoot = await mkdtemp(path.join(tmpdir(), "opencode-e2b-outside-"))
+  const localRoot = await mkdtemp(path.join(tmpdir(), "e2b-upload-"))
+  const outsideRoot = await mkdtemp(path.join(tmpdir(), "e2b-outside-"))
   try {
     const outsideFile = path.join(outsideRoot, "secret.txt")
     await writeFile(outsideFile, "secret")

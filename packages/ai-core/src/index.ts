@@ -18,13 +18,13 @@ import {
   type ProviderStreamChunk,
 } from '@packages/provider-adapters/src/index.ts';
 import { createWebSearchTools } from '@packages/web-search/src/index.ts';
-import { createE2BAgentTools } from '@packages/opencode-e2b/src/e2b-agent-tools.ts';
+import { createE2BAgentTools } from '@packages/e2b/src/e2b-agent-tools.ts';
 import { createAgentTools } from '@packages/agent-tools/src/index.ts';
 import {
   extractXmlToolCalls,
   executeXmlToolCalls,
   cleanXmlToolCallsFromText,
-} from '@packages/opencode-e2b/src/tool-call-parser.ts';
+} from '@packages/e2b/src/tool-call-parser.ts';
 import { TaskManager } from '@packages/task-manager/src/index.ts';
 import type { WebSearchResponse } from '@packages/web-search/src/types/index.ts';
 

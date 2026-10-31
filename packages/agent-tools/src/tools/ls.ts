@@ -3,7 +3,7 @@
  * Lists files and subdirectories in a given directory path.
  */
 
-import { runE2BCommand } from '@packages/opencode-e2b/src/e2b-agent-tools.ts';
+import { runE2BCommand } from '@packages/e2b/src/e2b-agent-tools.ts';
 
 export const lsTool = {
   name: 'ls',

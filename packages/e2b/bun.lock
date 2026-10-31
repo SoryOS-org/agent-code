@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "opencode-e2b-workspace-plugin",
+      "name": "@packages/e2b",
       "dependencies": {
         "@opencode-ai/plugin": "1.18.23",
         "e2b": "2.46.0",

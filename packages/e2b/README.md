@@ -16,7 +16,7 @@ Register the built plugin in your OpenCode config:
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     [
-      "/absolute/path/to/opencode-e2b/dist/index.js",
+      "/absolute/path/to/@packages/e2b/dist/index.js",
       {
         "nodeVariant": "22-slim",
         "sandboxTimeoutMs": 3600000
@@ -46,14 +46,14 @@ The plugin is loaded by OpenCode's Bun runtime and uses Bun as its development r
 
 The plugin builds sandboxes from a local workspace wrapper template. That wrapper first tries to layer on top of the published E2B template `e2b/opencode:v<runtimeVersion>`. E2B cannot call `get_tags` across teams, so the plugin does not preflight published template tags; it tries the published base directly and falls back if that wrapper build fails. If the published runtime template is unavailable, the plugin builds a managed base template from the configured Node image and installs the pinned OpenCode runtime there, then builds the same workspace wrapper on top of that base.
 
-Managed base and workspace templates use the `opencode-e2b-` alias prefix. Base templates are keyed by Node image, OpenCode runtime version, and plugin package version. Workspace wrapper templates are keyed by the selected base template, project path, server port, and plugin package version.
+Managed base and workspace templates use the `e2b-` alias prefix. Base templates are keyed by Node image, OpenCode runtime version, and plugin package version. Workspace wrapper templates are keyed by the selected base template, project path, server port, and plugin package version.
 
 On workspace create, the plugin:
 
 - finds an existing compatible sandbox for the workspace or creates a new one;
 - uploads the local project snapshot into the sandbox;
 - ensures the uploaded project has a git repository with the snapshot committed, and writes `.git/opencode`;
-- writes per-workspace OpenCode env values to `/tmp/.opencode-e2b.env`;
+- writes per-workspace OpenCode env values to `/tmp/.e2b.env`;
 - releases the managed workspace template's marker-gated systemd `opencode serve` service;
 - waits for `/global/health`, then for the sync endpoints (`/global/event` and `/sync/history`) before returning the remote workspace target.
 
@@ -110,7 +110,7 @@ Common options:
 
 ## Template Cleanup
 
-Managed templates use the `opencode-e2b-` alias prefix. A best-effort cleanup pass runs at plugin load and after workspace removal. Ready templates are deletion candidates when the most recent of `lastSpawnedAt`, `updatedAt`, and `createdAt` is older than the configured TTL.
+Managed templates use the `e2b-` alias prefix. A best-effort cleanup pass runs at plugin load and after workspace removal. Ready templates are deletion candidates when the most recent of `lastSpawnedAt`, `updatedAt`, and `createdAt` is older than the configured TTL.
 
 ```json
 {

@@ -3,6 +3,7 @@
  */
 
 import { Sandbox } from 'e2b';
+import { getOrCreateSandbox, isE2BEnabled } from './sandbox-manager.js';
 
 export interface CodeExecutionArgs {
   language: 'python' | 'javascript' | 'typescript' | 'bash' | 'sh' | 'rust' | 'rs' | 'shell';
@@ -34,9 +35,12 @@ export async function executeSecureCode(args: CodeExecutionArgs, dynamicApiKey?:
 
   const apiKey = dynamicApiKey || process.env.E2B_API_KEY;
 
-  if (apiKey && apiKey.trim().length > 0 && !apiKey.startsWith('dummy')) {
+  if (isE2BEnabled(dynamicApiKey)) {
+    let sandbox: Sandbox | null = null;
     try {
-      const sandbox = await Sandbox.create({ apiKey });
+      // Reuse the persistent agent sandbox (no create/kill per execution)
+      sandbox = await getOrCreateSandbox(dynamicApiKey);
+      if (!sandbox) throw new Error('E2B sandbox unavailable');
       let output: { stdout?: string; stderr?: string; exitCode?: number } = {};
 
       const runCommandSafely = async (cmd: string) => {
@@ -65,10 +69,6 @@ export async function executeSecureCode(args: CodeExecutionArgs, dynamicApiKey?:
         await sandbox.files.write('/tmp/main.js', code);
         output = await runCommandSafely('node /tmp/main.js');
       }
-
-      try {
-        await sandbox.kill();
-      } catch {}
 
       return {
         stdout: output.stdout || '',

@@ -3,7 +3,7 @@
  * Creates or updates a file inside the E2B Cloud Sandbox.
  */
 
-import { writeE2BFile } from '@packages/opencode-e2b/src/e2b-agent-tools.ts';
+import { writeE2BFile } from '@packages/e2b/src/e2b-agent-tools.ts';
 
 export const writeTool = {
   name: 'write',

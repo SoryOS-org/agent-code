@@ -4,7 +4,7 @@
  */
 
 import { Router } from 'express';
-import { executeSecureCode } from '@packages/opencode-e2b/src/code-executor.ts';
+import { executeSecureCode } from '@packages/e2b/src/code-executor.ts';
 
 export const codeRouter = Router();
 
@@ -58,6 +58,32 @@ codeRouter.post('/code/execute', async (req, res) => {
 });
 
 /**
+ * GET /code/sandbox
+ * Status of the persistent E2B sandbox (the agent's remote work environment)
+ */
+codeRouter.get('/code/sandbox', async (_req, res) => {
+  try {
+    const { getSandboxStatus } = await import('@packages/e2b/src/sandbox-manager.ts');
+    res.json(getSandboxStatus());
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/**
+ * DELETE /code/sandbox
+ * Stop the persistent E2B sandbox (release the remote environment)
+ */
+codeRouter.delete('/code/sandbox', async (_req, res) => {
+  try {
+    const { stopSandbox } = await import('@packages/e2b/src/sandbox-manager.ts');
+    res.json(await stopSandbox());
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/**
  * POST /code/command
  * Run terminal / shell commands in E2B sandbox or secure local fallback
  */
@@ -69,7 +95,7 @@ codeRouter.post('/code/command', async (req, res) => {
   }
 
   try {
-    const { runE2BCommand } = await import('@packages/opencode-e2b/src/e2b-agent-tools.ts');
+    const { runE2BCommand } = await import('@packages/e2b/src/e2b-agent-tools.ts');
     const result = await runE2BCommand(command);
     res.json(result);
   } catch (err: unknown) {

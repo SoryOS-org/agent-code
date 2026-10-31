@@ -92,7 +92,7 @@ test("buildSystemdUnitContent points systemd at the opencode start script", () =
   assert.match(unit, /Restart=on-failure/)
   assert.match(unit, /StandardOutput=journal/)
   assert.match(unit, /StandardError=journal/)
-  assert.match(unit, /ExecStart=\/usr\/local\/bin\/opencode-e2b-start/)
+  assert.match(unit, /ExecStart=\/usr\/local\/bin\/e2b-start/)
   // opencode must run as the project-owning user, not root: as pure root git's
   // dubious-ownership check rejects the user-owned repo, so opencode falls back
   // to its "global" project and never registers the uploaded repo — a warped
@@ -104,7 +104,7 @@ test("buildSystemdStartScript gates opencode serve on the bootstrap marker", () 
   const script = buildSystemdStartScript("/home/user/project", 4096)
 
   assert.match(script, /^#!\/bin\/sh/)
-  assert.match(script, /waiting for \/tmp\/\.opencode-e2b-bootstrap-ready/)
+  assert.match(script, /waiting for \/tmp\/\.e2b-bootstrap-ready/)
   assert.match(script, new RegExp(escapeRegExp(BOOTSTRAP_READY_MARKER)))
   assert.match(script, new RegExp(escapeRegExp(RUNTIME_ENV_FILE)))
   assert.match(script, /cd '\/home\/user\/project'/)
@@ -114,9 +114,9 @@ test("buildSystemdStartScript gates opencode serve on the bootstrap marker", () 
 test("buildSystemdServiceInstallCommand writes the opencode service unit and start script", () => {
   const command = buildSystemdServiceInstallCommand("/home/user/project", 4096)
 
-  assert.match(command, /cat >\/usr\/local\/bin\/opencode-e2b-start <<'EOF'/)
-  assert.match(command, /chmod \+x \/usr\/local\/bin\/opencode-e2b-start/)
-  assert.match(command, /cat >\/etc\/systemd\/system\/opencode-e2b\.service <<'EOF'/)
+  assert.match(command, /cat >\/usr\/local\/bin\/e2b-start <<'EOF'/)
+  assert.match(command, /chmod \+x \/usr\/local\/bin\/e2b-start/)
+  assert.match(command, /cat >\/etc\/systemd\/system\/e2b\.service <<'EOF'/)
   assert.match(command, new RegExp(escapeRegExp(BOOTSTRAP_READY_MARKER)))
   assert.match(command, /Description=OpenCode E2B workspace server/)
   assert.match(command, /EOF$/)
@@ -126,8 +126,8 @@ test("buildSystemdStartCommand starts the service and streams opencode logs", ()
   const command = buildSystemdStartCommand()
 
   assert.match(command, /sudo systemctl daemon-reload/)
-  assert.match(command, /sudo systemctl restart opencode-e2b\.service/)
-  assert.match(command, /sudo journalctl -fu opencode-e2b\.service -o cat/)
+  assert.match(command, /sudo systemctl restart e2b\.service/)
+  assert.match(command, /sudo journalctl -fu e2b\.service -o cat/)
 })
 
 test("ensureManagedWorkspaceTemplate builds managed templates", async () => {

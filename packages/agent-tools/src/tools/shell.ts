@@ -1,13 +1,14 @@
 /**
  * Shell Execution Tool
- * Executes terminal commands (bash, sh) inside the E2B Cloud Sandbox.
+ * Executes terminal commands in the agent's remote work environment:
+ * the persistent E2B Cloud Sandbox (local workspace fallback handled by runE2BCommand).
  */
 
-import { runE2BCommand } from '@packages/opencode-e2b/src/e2b-agent-tools.ts';
+import { runE2BCommand } from '@packages/e2b/src/e2b-agent-tools.ts';
 
 export const shellTool = {
   name: 'shell',
-  description: 'Exécuter une commande terminal shell (bash/sh) dans l\'environnement Sandbox E2B.',
+  description: 'Exécuter une commande terminal shell (bash/sh) dans l\'environnement distant E2B où l\'agent travaille.',
   parameters: {
     type: 'object',
     properties: {
@@ -21,24 +22,6 @@ export const shellTool = {
       return { stdout: '', stderr: 'Commande manquante', exitCode: 1 };
     }
 
-    try {
-      const { exec } = await import('child_process');
-      const path = await import('path');
-      const workspaceRoot = path.join(process.cwd(), 'workspace');
-
-      return new Promise((resolve) => {
-        exec(command, { cwd: workspaceRoot }, (error, stdout, stderr) => {
-          resolve({
-            stdout,
-            stderr,
-            exitCode: error ? error.code || 1 : 0,
-            executionTimeMs: 0, // Not measured here for simplicity
-          });
-        });
-      });
-    } catch (err: any) {
-      // Fallback to E2B
-      return await runE2BCommand(command);
-    }
+    return await runE2BCommand(command);
   },
 };

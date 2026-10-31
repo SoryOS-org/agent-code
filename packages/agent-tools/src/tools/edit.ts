@@ -3,7 +3,7 @@
  * Edits specific lines or replaces target content in a file.
  */
 
-import { runE2BCommand, writeE2BFile } from '@packages/opencode-e2b/src/e2b-agent-tools.ts';
+import { runE2BCommand, writeE2BFile } from '@packages/e2b/src/e2b-agent-tools.ts';
 
 export const editTool = {
   name: 'edit',

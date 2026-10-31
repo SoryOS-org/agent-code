@@ -2,7 +2,7 @@
  * Test script for E2B Cloud Sandbox execution
  */
 
-import { executeSecureCode } from '../packages/opencode-e2b/src/code-executor.js';
+import { executeSecureCode } from '../packages/e2b/src/code-executor.js';
 
 async function main() {
   console.log('--- TEST 1: Exécution Python dans E2B Cloud Sandbox ---');

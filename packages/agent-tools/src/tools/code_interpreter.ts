@@ -3,7 +3,7 @@
  * Executes Python, JavaScript, TypeScript, Bash, or Rust code in E2B Sandbox.
  */
 
-import { executeSecureCode } from '@packages/opencode-e2b/src/code-executor.ts';
+import { executeSecureCode } from '@packages/e2b/src/code-executor.ts';
 
 export const codeInterpreterTool = {
   name: 'code_interpreter',

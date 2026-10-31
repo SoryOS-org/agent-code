@@ -17,7 +17,7 @@ test("renderRuntimeEnvFile exports defined values and skips undefined entries", 
       OPTIONAL: undefined,
     }),
     [
-      "# Written by opencode-e2b bootstrap; sourced by the managed template systemd service.",
+      "# Written by e2b bootstrap; sourced by the managed template systemd service.",
       "# Do not edit: regenerated on every workspace create.",
       "export OPENCODE_WORKSPACE_ID='workspace-123'",
       "",
@@ -42,7 +42,7 @@ test("renderRuntimeEnvFile skips names that are not shell identifiers", () => {
       "$(touch /tmp/pwned)": "skipped",
     }),
     [
-      "# Written by opencode-e2b bootstrap; sourced by the managed template systemd service.",
+      "# Written by e2b bootstrap; sourced by the managed template systemd service.",
       "# Do not edit: regenerated on every workspace create.",
       "export GOOD_NAME='kept'",
       "",
@@ -136,7 +136,7 @@ test("bootstrapWorkspace releases the systemd opencode service with a marker", a
   assert.ok(commandRuns.every(([command]) => !command.includes("opencode serve")))
   assert.deepEqual(
     writes.map(([path]) => path),
-    ["/home/user/project/.git/opencode", "/tmp/.opencode-e2b.env", BOOTSTRAP_READY_MARKER],
+    ["/home/user/project/.git/opencode", "/tmp/.e2b.env", BOOTSTRAP_READY_MARKER],
   )
 })
 

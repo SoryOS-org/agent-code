@@ -3,7 +3,7 @@
  * Lists files matching pattern glob in the E2B Cloud Sandbox.
  */
 
-import { runE2BCommand } from '@packages/opencode-e2b/src/e2b-agent-tools.ts';
+import { runE2BCommand } from '@packages/e2b/src/e2b-agent-tools.ts';
 
 export const globTool = {
   name: 'glob',

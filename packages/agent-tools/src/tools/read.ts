@@ -3,7 +3,7 @@
  * Reads the content of a file from E2B Sandbox or workspace.
  */
 
-import { runE2BCommand } from '@packages/opencode-e2b/src/e2b-agent-tools.ts';
+import { runE2BCommand } from '@packages/e2b/src/e2b-agent-tools.ts';
 
 export const readTool = {
   name: 'read',

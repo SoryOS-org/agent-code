@@ -8,7 +8,7 @@ import { sandboxBaseUrl, sandboxTargetHeaders } from "./e2b.js"
 import { shellSingleQuote } from "./shared.js"
 import { BOOTSTRAP_READY_MARKER, RUNTIME_ENV_FILE } from "./template.js"
 
-const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
+const SYSTEMD_SERVICE_NAME = "e2b.service"
 const SHELL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /**
@@ -90,7 +90,7 @@ async function writeRuntimeEnvFile(
 export function renderRuntimeEnvFile(env: Record<string, string | undefined>): string {
   const entries = Object.entries(filterRuntimeEnv(env))
   const lines = [
-    "# Written by opencode-e2b bootstrap; sourced by the managed template systemd service.",
+    "# Written by e2b bootstrap; sourced by the managed template systemd service.",
     "# Do not edit: regenerated on every workspace create.",
     ...entries.map(([key, value]) => `export ${key}=${shellSingleQuote(value)}`),
     "",

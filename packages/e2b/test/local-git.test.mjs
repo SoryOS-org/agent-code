@@ -7,7 +7,7 @@ import { test } from "bun:test"
 import { readLocalGitBranch } from "../dist/local-git.js"
 
 async function tempDir() {
-  return mkdtemp(path.join(os.tmpdir(), "opencode-e2b-git-"))
+  return mkdtemp(path.join(os.tmpdir(), "e2b-git-"))
 }
 
 test("readLocalGitBranch reads the checked-out branch of a plain repository", async () => {
